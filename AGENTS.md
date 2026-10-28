@@ -7,3 +7,9 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+# Check Obsidian vault before reading & writing to this project
+
+Before making any changes to the codebase, read from 'agent-wiki' vault and write all changes to 'agent-wiki' vault. It can be found at:
+
+"Users/sam/Documents/agent-wiki"
