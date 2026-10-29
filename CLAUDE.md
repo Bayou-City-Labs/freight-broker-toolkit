@@ -135,6 +135,8 @@ The foundation is built and verified: `npm test` (46 tests), `npm run lint`, `np
 
 **Getting started.** Copy `.env.example` to `.env.local`, then `npm run db:up && npm run db:migrate && npm test`.
 
+**Deployed.** https://freight-broker-toolkit.vercel.app, on Neon Postgres provisioned through the Vercel marketplace; the schema is migrated there. Deploys are manual (`npx vercel deploy --prod`) until the Vercel GitHub App is authorized for the Bayou-City-Labs org, and `AUTH_RESEND_KEY` is still a placeholder so magic-link email does not send. See the README for both.
+
 ### Deliberately not built yet
 
 - Repositories for `Load`, `Party`, `Stop`, `Document` — the tables exist; access patterns should be designed against a real module, not guessed
