@@ -43,3 +43,9 @@ next-env.d.ts
 
 # Idea
 .idea
+# Agent tooling installed as a side effect of the Neon marketplace integration
+.agents
+skills-lock.json
+
+# Local editor/agent settings
+.claude
