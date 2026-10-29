@@ -8,6 +8,8 @@ recording requests as they come rather than filtering them first.
 Record who asked, what they asked for, and what it was blocking. Resist
 rewriting a request into a solution; the raw ask is the signal.
 
+Interview questions and outreach tracking live in [`discovery.md`](./discovery.md).
+
 | Date | Who | Request | Blocking what | Module |
 | ---- | --- | ------- | ------------- | ------ |
 

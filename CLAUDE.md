@@ -19,15 +19,48 @@ Where a decision is speculative, it is made reversible rather than deferred: unc
 
 Three modules, each usable on its own:
 
-1. **Load intake**
-   - Paste an email or upload a PDF (rate confirmation, tender) and extract a structured load record: shipper, consignee, pickup/delivery windows, commodity, weight, equipment, rate, reference numbers.
-   - Use an LLM for extraction with a strict schema (zod). A human reviews and edits before saving.
+1. **Load intake (local-first, no external LLM required)**
+   - Paste an email or upload a PDF/image (rate confirmation, tender) and extract a structured `LoadDraft`: shipper, consignee, pickup/delivery windows, commodity, weight, equipment, rate, reference numbers.
+   - Two stages behind a pluggable `Extractor` interface, so stages can be swapped or chained:
+     - **Text stage:** `PdfTextExtractor` (`unpdf`/`pdfjs-dist`, text with x/y positions) for digital PDFs. When there's no text layer, fall back to `TesseractExtractor` (`pdf-to-img` → `sharp` preprocessing → `tesseract.js`).
+     - **Structure stage:** `TemplateParser`, one template per document layout (anchor labels + positions + regex), selected by sender domain or layout fingerprint. Optional fallback for unknown layouts: a local LLM via Ollama, off by default and enabled per brokerage.
+   - Every extractor returns a zod-validated `LoadDraft` plus per-field confidence. Low-confidence or missing fields are flagged, and a human always reviews and edits before saving.
+   - No document data leaves the server unless a brokerage explicitly enables an external provider.
+   - Keep anonymized real documents in `/fixtures/intake/` as regression tests for each template. Public samples and synthetic documents count — waiting on client permission would block the module indefinitely.
+   - **Carrier vetting is reachable from a draft.** A rate con names the carrier; vetting it should be one click from the review screen, not a separate errand. This is the first place the modules compose.
 2. **Document generation**
    - From a load record, generate a carrier rate confirmation and a BOL as PDFs.
    - Templates are editable per brokerage (logo, terms, fields).
 3. **Carrier vetting**
    - Look up a carrier by MC/DOT number using the FMCSA public data API: authority status, insurance on file, safety rating, out-of-service flags.
    - Show a pass/warn/fail summary and store a snapshot with a timestamp for the audit trail.
+
+### Load intake: build order and the one open question
+
+The architecture above is settled. What is **not** settled is whether the template parser generalises, and that single question decides whether this module productizes.
+
+**The question:** do rate con layouts cluster by **TMS vendor** or by **shipper**?
+
+- Clustered by TMS (McLeod, AscendTMS, Tai, Turvo, Revenova, the load boards) — a "McLeod rate con" template is a durable asset that works for every client ever onboarded. The local-first approach is then clearly right, and templates are a moat.
+- Clustered by shipper — templates are hand-built per customer, break silently when a shipper tweaks a PDF, and Phase 2's "sign up and get value without a call" gate is unreachable. The Ollama fallback would need promoting from optional to default.
+
+Same code, opposite business. It cannot be answered from first principles, only by looking at real documents. So the build is ordered to stay useful in both worlds and to defer the structure stage until there is a corpus:
+
+1. **Text stage — digital PDFs with positions.** Zero risk, needed by every downstream path, commits to nothing.
+2. **The review screen.** Per-field confidence, flagging, human edit-and-confirm, then save as a real `Load` + `Stop[]` + `Party`. This is where the product value actually is, it is identical regardless of which extractor wins, and it is the demoable part.
+3. **A corpus inspector.** Drop a PDF in, dump extracted text, positions, and a layout fingerprint. Not production code — the instrument for answering the question above.
+4. **Structure stage**, chosen with the corpus in front of us.
+
+Do not build step 4 before step 3 has been pointed at real documents.
+
+### Known constraints on the intake pipeline
+
+Flagged before building, because each one changes the shape of the code:
+
+- **OCR does not fit in a request handler.** `tesseract.js` is WASM: cold start, language-data load, then seconds per page, and memory-hungry. A multi-page scanned rate con will exceed the function timeout on Vercel. That path needs a job queue and a status-polling UI — a materially bigger build than the digital-PDF path, and the reason the two stages are listed separately rather than as one step.
+- **`unpdf`'s convenience API does not return positions.** `extractText` gives plain strings; x/y requires `getDocumentProxy` and pdf.js `getTextContent()` items. Positions are load-bearing for the template approach, so the easy call is not the one to use.
+- **The existing `Extractor` port does not fit.** It takes a `z.ZodType<T>` and returns `T` — an LLM-shaped interface. The two-stage design wants text + positions from stage one, and `LoadDraft` + per-field confidence from stage two. Reshaping it is small, but it is the seam the whole module hangs off, so do it deliberately rather than bending the pipeline to the old signature.
+- **`sharp` is a heavy native dependency.** Only pull it in when the OCR path is actually built.
 
 ### Out of scope for now
 
@@ -43,7 +76,7 @@ Decisions settled in the first session; see "Foundation decisions" below for the
 - zod for all external input and LLM output validation
 - **Auth.js** — magic link via Resend, database sessions, Drizzle adapter
 - PDF generation: **`@react-pdf/renderer`** — decided, not yet installed (lands with the doc-gen module)
-- LLM provider: **deliberately undecided.** `Extractor` port only; pick a model against real rate cons, not in advance
+- Extraction: **local-first, no external LLM in the default path.** PDF text via `unpdf`/`pdfjs-dist`, OCR fallback via `tesseract.js`, structure via templates. A local LLM through Ollama is an optional per-brokerage fallback for unknown layouts, off by default. Document data leaves the server only if a brokerage opts in
 - Vitest for tests, against real Postgres with per-test transaction rollback
 - Single-tenant first, but `brokerageId` is on every table and every repository call requires a `BrokerageScope`
 
@@ -100,7 +133,7 @@ Context for design decisions only. Do NOT build ahead of the current phase. Each
 **Phase 1 — First paying clients (now → ~month 3)**
 
 - Custom builds for 2–3 brokers using the shared modules above; pricing is setup fee + monthly maintenance
-- Track every feature request in `/docs/requests.md`
+- Track every feature request in `/docs/requests.md`; interview questions and outreach in `/docs/discovery.md`
 - Gate: 3 paying clients needing the same core module
 
 **Phase 2 — Productize the core (~months 3–6)**
@@ -159,16 +192,15 @@ A re-check reports whether the payload moved (`changed`), by comparing the conte
 ### Deliberately not built yet
 
 - Repositories for `Load`, `Party`, `Stop`, `Document` — the tables exist; access patterns should be designed against a real module, not guessed
-- The PDF renderer and LLM extractor — ports exist, implementations do not
+- The PDF renderer and every extractor — ports exist, implementations do not. The `Extractor` port needs reshaping before the intake pipeline is built (see "Known constraints on the intake pipeline")
 - A `DocumentStore` implementation (the local-filesystem adapter lands with doc generation)
 - **Refreshing a carrier's name or address on re-vet.** `vetCarrier` sets `details` when it creates a carrier and never updates it, because `CarrierRepository` has no update method. Stale rather than wrong — the raw payload on every check has the current values. Add the method when a screen needs it
 - Searching a carrier by name (the QCMobile `/carriers/name/:name` endpoint). Brokers vet by number; add this only if discovery says otherwise
 
 ### Next session
 
-Open. Two reasonable directions:
+**Load intake, steps 1–3** of the build order above: the text stage, the review screen, and the corpus inspector. Step 4 waits for real documents.
 
-- **Validate with what exists.** Carrier vetting is demoable now and is the cheapest thing to put in front of a broker on a discovery call. Feedback here is worth more than another module.
-- **Load intake**, if discovery calls are already pointing at re-keying as the bigger pain. It is the module with the most uncertainty (LLM provider undecided on purpose, field list unconfirmed), so it benefits most from real rate cons.
+This runs in parallel with discovery rather than after it — see `docs/discovery.md`. There is no client yet and no former-colleague network to draw on, so sample rate cons come from cold outreach and public sources. The corpus inspector exists so that whatever arrives can be turned into an answer immediately.
 
-Do not start document generation first — it consumes a load record, and load intake defines what that record actually contains.
+Do not start document generation — it consumes a load record, and load intake defines what that record actually contains.
