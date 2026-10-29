@@ -30,6 +30,7 @@ npm run dev
 | `npm run db:up`       | Start the local Postgres container                           |
 | `npm run db:generate` | Generate a migration from schema changes                     |
 | `npm run db:migrate`  | Apply committed migrations                                   |
+| `npm run db:seed`     | Create a brokerage and make a user its owner (throwaway)     |
 | `npm run db:studio`   | Drizzle Studio                                               |
 
 ## Layout
@@ -44,6 +45,17 @@ src/server/   Request-scoped server helpers (tenant resolution).
 src/app/      Routes and UI.
 src/test/     Transaction-rollback harness and migration setup.
 ```
+
+### Getting a tenant
+
+Auth.js creates a user on first sign-in, but nothing creates the brokerage that user belongs to — so `getCurrentBrokerage()` returns `null` and repository calls have no scope. Until there's a real onboarding flow, bridge it:
+
+```bash
+npm run db:seed -- you@example.com                        # local
+npm run db:seed -- you@example.com "postgresql://..."     # a deployed database
+```
+
+`src/db/seed.ts` is deliberately throwaway. Delete it when first-run onboarding exists.
 
 ## Deployment
 
