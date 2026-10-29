@@ -73,6 +73,14 @@ export interface PartyRepository {
    */
   findByName(scope: BrokerageScope, name: string): Promise<Party | null>;
   list(scope: BrokerageScope, limit?: number): Promise<Party[]>;
+  /**
+   * Corrects a facility in place, which changes it for every load that touches
+   * it. That is the intended behaviour: an address is a property of the dock,
+   * not of one load, so a wrong ZIP is wrong everywhere. Renaming is a
+   * different act — a stop that should point at a different facility is
+   * re-resolved by name instead. Null when the facility is not in scope.
+   */
+  update(scope: BrokerageScope, id: string, input: NewParty): Promise<Party | null>;
 }
 
 export interface LoadRepository {

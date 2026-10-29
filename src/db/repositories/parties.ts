@@ -51,6 +51,28 @@ export function createPartyRepository(executor: DbExecutor): PartyRepository {
       return toParty(row);
     },
 
+    async update(scope, id, input) {
+      const [row] = await executor
+        .update(parties)
+        .set({
+          name: input.name,
+          addressLine1: input.addressLine1 ?? null,
+          addressLine2: input.addressLine2 ?? null,
+          city: input.city ?? null,
+          region: input.region ?? null,
+          postalCode: input.postalCode ?? null,
+          country: input.country ?? "US",
+          timeZone: input.timeZone ?? null,
+          contactName: input.contactName ?? null,
+          contactPhone: input.contactPhone ?? null,
+          contactEmail: input.contactEmail ?? null,
+          details: input.details ?? {},
+        })
+        .where(and(eq(parties.brokerageId, scope.brokerageId), eq(parties.id, id)))
+        .returning();
+      return row ? toParty(row) : null;
+    },
+
     async findById(scope, id) {
       const [row] = await executor
         .select()

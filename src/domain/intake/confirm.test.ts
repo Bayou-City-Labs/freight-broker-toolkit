@@ -56,6 +56,29 @@ function fakeParties(seed: Party[] = []) {
     async list(s) {
       return rows.filter((r) => r.brokerageId === s.brokerageId);
     },
+    async update(s, id, input) {
+      const index = rows.findIndex((r) => r.brokerageId === s.brokerageId && r.id === id);
+      if (index === -1) return null;
+      const existing = rows[index];
+      const updated: Party = {
+        id: existing.id,
+        brokerageId: existing.brokerageId,
+        name: input.name,
+        addressLine1: input.addressLine1 ?? null,
+        addressLine2: input.addressLine2 ?? null,
+        city: input.city ?? null,
+        region: input.region ?? null,
+        postalCode: input.postalCode ?? null,
+        country: input.country ?? "US",
+        timeZone: input.timeZone ?? null,
+        contactName: input.contactName ?? null,
+        contactPhone: input.contactPhone ?? null,
+        contactEmail: input.contactEmail ?? null,
+        details: input.details ?? {},
+      };
+      rows[index] = updated;
+      return updated;
+    },
   };
 
   return { repo, rows };

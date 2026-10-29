@@ -65,6 +65,53 @@ describe("party repository", () => {
       expect(await parties.list(mine)).toHaveLength(0);
     });
   });
+
+  it("corrects a facility in place, for every load that touches it", async () => {
+    await withRollback(async (tx) => {
+      const scope = await seedBrokerage(tx);
+      const parties = createPartyRepository(tx);
+
+      const created = await parties.create(scope, {
+        name: "ACME DISTRIBUTION",
+        addressLine1: "4400 Navigation Blvd",
+        city: "Houston",
+        region: "TX",
+        postalCode: "77011",
+        timeZone: "America/Chicago",
+      });
+
+      const updated = await parties.update(scope, created.id, {
+        name: "ACME DISTRIBUTION",
+        addressLine1: "4400 Navigation Blvd",
+        city: "Houston",
+        region: "TX",
+        postalCode: "77012",
+        timeZone: created.timeZone,
+      });
+
+      expect(updated?.id).toBe(created.id);
+      expect(updated?.postalCode).toBe("77012");
+      // The facility's zone is not the edit screen's to guess at, so a caller
+      // that passes it back unchanged must get it back unchanged.
+      expect(updated?.timeZone).toBe("America/Chicago");
+
+      const found = await parties.findById(scope, created.id);
+      expect(found?.postalCode).toBe("77012");
+    });
+  });
+
+  it("will not update another brokerage's facility", async () => {
+    await withRollback(async (tx) => {
+      const mine = await seedBrokerage(tx, "Mine");
+      const theirs = await seedBrokerage(tx, "Theirs");
+      const parties = createPartyRepository(tx);
+
+      const created = await parties.create(theirs, { name: "LONE STAR FOODS" });
+
+      expect(await parties.update(mine, created.id, { name: "HIJACKED" })).toBeNull();
+      expect((await parties.findById(theirs, created.id))?.name).toBe("LONE STAR FOODS");
+    });
+  });
 });
 
 describe("load repository", () => {
