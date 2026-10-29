@@ -1,0 +1,404 @@
+import { describe, expect, it } from "vitest";
+import { fakeCarriers, fakeLoads, fakeParties } from "@/test/fakes";
+import { createConfirmDraft, type ConfirmedLoad } from "../intake/confirm";
+import { scopeFor, type BrokerageScope } from "../tenancy";
+import { createUpdateLoad, type EditedLoad, type EditedStop } from "./update";
+
+const scope: BrokerageScope = scopeFor("brokerage-1");
+const otherScope: BrokerageScope = scopeFor("brokerage-2");
+const at = new Date("2026-10-29T20:15:00.000Z");
+
+/**
+ * Every case starts from a load that intake saved, because that is the only
+ * way a load exists. Reusing `confirmDraft` rather than hand-building rows also
+ * keeps the two use cases honest about sharing a representation.
+ */
+function confirmed(overrides: Partial<ConfirmedLoad> = {}): ConfirmedLoad {
+  return {
+    referenceNumber: "884213",
+    carrierName: "GULF COAST HAULING LLC",
+    carrierMcNumber: "987654",
+    carrierDotNumber: null,
+    commodity: "Canned goods",
+    weightLbs: 42000,
+    equipment: "53' Dry Van",
+    carrierRateCents: 185_000,
+    stops: [
+      {
+        kind: "pickup",
+        partyName: "ACME DISTRIBUTION",
+        addressLine: "4400 Navigation Blvd",
+        city: "Houston",
+        state: "TX",
+        postalCode: "77011",
+        date: "2026-11-02",
+        windowStart: "08:00",
+        windowEnd: "12:00",
+        referenceNumber: "PU-4471",
+        windowRawText: "PU 11/02 0800-1200",
+      },
+      {
+        kind: "delivery",
+        partyName: "LONE STAR FOODS",
+        addressLine: "900 Industrial Way",
+        city: "Dallas",
+        state: "TX",
+        postalCode: "75201",
+        date: "2026-11-03",
+        windowStart: "14:00",
+        windowEnd: null,
+        referenceNumber: null,
+        windowRawText: "DEL 11/03 1400",
+      },
+    ],
+    provenance: {
+      producedBy: "label-proximity-v1",
+      textSource: "pdf-text",
+      filename: "rate-con.pdf",
+      corrections: [{ path: "weightLbs", confidence: 0.9 }],
+      acceptedFlagged: ["stops.0.city"],
+    },
+    ...overrides,
+  };
+}
+
+async function given(carriers = fakeCarriers()) {
+  const parties = fakeParties();
+  const loads = fakeLoads();
+
+  const confirm = createConfirmDraft({
+    loads: loads.repo,
+    parties: parties.repo,
+    carriers: carriers.repo,
+  });
+  const update = createUpdateLoad({
+    loads: loads.repo,
+    parties: parties.repo,
+    carriers: carriers.repo,
+    now: () => at,
+  });
+
+  const saved = await confirm(scope, confirmed());
+  if (saved.status !== "saved") throw new Error("fixture failed to save");
+
+  /** The submission the edit form posts when nothing is changed. */
+  const unchanged = (): EditedLoad => ({
+    referenceNumber: "884213",
+    carrierName: "GULF COAST HAULING LLC",
+    carrierMcNumber: "987654",
+    carrierDotNumber: null,
+    commodity: "Canned goods",
+    weightLbs: 42000,
+    equipment: "53' Dry Van",
+    carrierRateCents: 185_000,
+    stops: saved.stops.map(
+      (stop, index): EditedStop => ({
+        id: stop.id,
+        ...confirmed().stops[index],
+      }),
+    ),
+  });
+
+  return { update, loads, parties, carriers, saved, unchanged };
+}
+
+describe("updateLoad", () => {
+  it("changes a field and records what it was", async () => {
+    const { update, saved, unchanged } = await given();
+
+    const outcome = await update(scope, saved.load.id, {
+      ...unchanged(),
+      carrierRateCents: 190_000,
+    });
+
+    expect(outcome.status).toBe("saved");
+    if (outcome.status !== "saved") return;
+
+    expect(outcome.load.carrierPayCents).toBe(190_000);
+    expect(outcome.load.details.edits).toEqual([
+      {
+        at: at.toISOString(),
+        changes: [
+          // `Money.toDollarString()` emits "1850.00" — no separators, no sign.
+          { path: "carrierPayCents", from: "$1850.00", to: "$1900.00" },
+        ],
+      },
+    ]);
+  });
+
+  it("records nothing when a save changed nothing", async () => {
+    const { update, saved, unchanged } = await given();
+
+    const outcome = await update(scope, saved.load.id, unchanged());
+    if (outcome.status !== "saved") throw new Error("expected a save");
+
+    // An empty entry would make the trail noise and hide the real edits.
+    expect(outcome.load.details.edits).toBeUndefined();
+  });
+
+  it("keeps the intake record, the status, and the customer rate", async () => {
+    const { update, loads, saved, unchanged } = await given();
+
+    // A number only a human can know, set outside this form.
+    const row = loads.rows.find((load) => load.id === saved.load.id);
+    if (row) loads.rows[loads.rows.indexOf(row)] = { ...row, customerRateCents: 210_000 };
+
+    const outcome = await update(scope, saved.load.id, {
+      ...unchanged(),
+      commodity: "Frozen poultry",
+    });
+    if (outcome.status !== "saved") throw new Error("expected a save");
+
+    // Evidence about the parser is not an edit and must survive one.
+    expect(outcome.load.details.intake?.corrections).toEqual([
+      { path: "weightLbs", confidence: 0.9 },
+    ]);
+    // Status is not this feature's to change.
+    expect(outcome.load.status).toBe("booked");
+    // Not on the form, so not nulled by a save.
+    expect(outcome.load.customerRateCents).toBe(210_000);
+  });
+
+  it("does not re-infer the status when a rate is filled in", async () => {
+    const parties = fakeParties();
+    const loads = fakeLoads();
+    const carriers = fakeCarriers();
+    const confirm = createConfirmDraft({
+      loads: loads.repo,
+      parties: parties.repo,
+      carriers: carriers.repo,
+    });
+    const update = createUpdateLoad({
+      loads: loads.repo,
+      parties: parties.repo,
+      carriers: carriers.repo,
+      now: () => at,
+    });
+
+    const saved = await confirm(scope, confirmed({ carrierRateCents: null }));
+    if (saved.status !== "saved") throw new Error("expected a save");
+    expect(saved.load.status).toBe("draft");
+
+    const outcome = await update(scope, saved.load.id, {
+      referenceNumber: "884213",
+      carrierName: "GULF COAST HAULING LLC",
+      carrierMcNumber: "987654",
+      carrierDotNumber: null,
+      commodity: "Canned goods",
+      weightLbs: 42000,
+      equipment: "53' Dry Van",
+      carrierRateCents: 185_000,
+      stops: saved.stops.map((stop, index) => ({
+        id: stop.id,
+        ...confirmed().stops[index],
+      })),
+    });
+    if (outcome.status !== "saved") throw new Error("expected a save");
+
+    // Re-inferring would also silently flip a status someone had set on
+    // purpose. A real lifecycle needs discovery, not inference.
+    expect(outcome.load.status).toBe("draft");
+  });
+
+  it("corrects the facility in place when the name is unchanged", async () => {
+    const { update, parties, saved, unchanged } = await given();
+    const edit = unchanged();
+
+    const outcome = await update(scope, saved.load.id, {
+      ...edit,
+      stops: [{ ...edit.stops[0], postalCode: "77012" }, edit.stops[1]],
+    });
+    if (outcome.status !== "saved") throw new Error("expected a save");
+
+    const acme = parties.rows.filter((party) => party.name === "ACME DISTRIBUTION");
+    expect(acme).toHaveLength(1);
+    expect(acme[0].postalCode).toBe("77012");
+    expect(outcome.load.details.edits?.[0].changes).toEqual([
+      { path: "stops.0.postalCode", from: "77011", to: "77012" },
+    ]);
+  });
+
+  it("points the stop at a different facility when the name changes", async () => {
+    const { update, parties, saved, unchanged } = await given();
+    const edit = unchanged();
+
+    const outcome = await update(scope, saved.load.id, {
+      ...edit,
+      stops: [
+        { ...edit.stops[0], partyName: "HOUSTON TERMINAL WAREHOUSE" },
+        edit.stops[1],
+      ],
+    });
+    if (outcome.status !== "saved") throw new Error("expected a save");
+
+    // The old facility is untouched — other loads point at it.
+    expect(parties.rows.map((party) => party.name).sort()).toEqual([
+      "ACME DISTRIBUTION",
+      "HOUSTON TERMINAL WAREHOUSE",
+      "LONE STAR FOODS",
+    ]);
+    const stop = outcome.stops[0];
+    expect(stop.partyId).toBe(
+      parties.rows.find((p) => p.name === "HOUSTON TERMINAL WAREHOUSE")?.id,
+    );
+  });
+
+  it("reuses a facility that already exists under the new name", async () => {
+    const { update, parties, saved, unchanged } = await given();
+    const edit = unchanged();
+
+    const outcome = await update(scope, saved.load.id, {
+      ...edit,
+      stops: [{ ...edit.stops[0], partyName: "lone star foods" }, edit.stops[1]],
+    });
+    if (outcome.status !== "saved") throw new Error("expected a save");
+
+    expect(parties.rows).toHaveLength(2);
+    const loneStar = parties.rows.find((p) => p.name === "LONE STAR FOODS");
+    expect(outcome.stops[0].partyId).toBe(loneStar?.id);
+  });
+
+  it("adds a stop", async () => {
+    const { update, saved, unchanged } = await given();
+    const edit = unchanged();
+
+    const outcome = await update(scope, saved.load.id, {
+      ...edit,
+      stops: [
+        ...edit.stops,
+        {
+          id: null,
+          kind: "delivery",
+          partyName: "EL PASO CROSSDOCK",
+          addressLine: null,
+          city: "El Paso",
+          state: "TX",
+          postalCode: null,
+          date: "2026-11-04",
+          windowStart: "10:00",
+          windowEnd: null,
+          referenceNumber: null,
+          windowRawText: null,
+        },
+      ],
+    });
+    if (outcome.status !== "saved") throw new Error("expected a save");
+
+    expect(outcome.stops).toHaveLength(3);
+    expect(outcome.stops.map((stop) => stop.sequence)).toEqual([0, 1, 2]);
+    expect(outcome.load.details.edits?.[0].changes).toEqual([
+      { path: "stops", from: "2 stops", to: "3 stops" },
+    ]);
+  });
+
+  it("removes a stop", async () => {
+    const { update, saved, unchanged } = await given();
+    const edit = unchanged();
+
+    const outcome = await update(scope, saved.load.id, {
+      ...edit,
+      stops: [edit.stops[1]],
+    });
+    if (outcome.status !== "saved") throw new Error("expected a save");
+
+    expect(outcome.stops).toHaveLength(1);
+    expect(outcome.stops[0].id).toBe(saved.stops[1].id);
+    expect(outcome.stops[0].sequence).toBe(0);
+  });
+
+  it("reorders stops, keeping their ids", async () => {
+    const { update, saved, unchanged } = await given();
+    const edit = unchanged();
+
+    const outcome = await update(scope, saved.load.id, {
+      ...edit,
+      stops: [edit.stops[1], edit.stops[0]],
+    });
+    if (outcome.status !== "saved") throw new Error("expected a save");
+
+    expect(outcome.stops.map((stop) => stop.id)).toEqual([
+      saved.stops[1].id,
+      saved.stops[0].id,
+    ]);
+  });
+
+  it("is not a duplicate of itself", async () => {
+    const { update, saved, unchanged } = await given();
+
+    const outcome = await update(scope, saved.load.id, unchanged());
+    expect(outcome.status).toBe("saved");
+  });
+
+  it("refuses a reference number another load already uses", async () => {
+    const { update, loads, parties, carriers, saved, unchanged } = await given();
+
+    const confirm = createConfirmDraft({
+      loads: loads.repo,
+      parties: parties.repo,
+      carriers: carriers.repo,
+    });
+    await confirm(scope, confirmed({ referenceNumber: "999999" }));
+
+    const outcome = await update(scope, saved.load.id, {
+      ...unchanged(),
+      referenceNumber: "999999",
+    });
+
+    expect(outcome.status).toBe("duplicate_reference");
+    if (outcome.status !== "duplicate_reference") return;
+    expect(outcome.existing.referenceNumber).toBe("999999");
+  });
+
+  it("links a carrier we hold, and never creates one", async () => {
+    const carriers = fakeCarriers([
+      {
+        id: "carrier-known",
+        brokerageId: scope.brokerageId,
+        dotNumber: "1234567",
+        mcNumber: "987654",
+        legalName: "GULF COAST HAULING LLC",
+        dbaName: null,
+        details: {},
+      },
+    ]);
+    const { update, saved, unchanged } = await given(carriers);
+
+    const outcome = await update(scope, saved.load.id, {
+      ...unchanged(),
+      carrierMcNumber: "987654",
+    });
+    if (outcome.status !== "saved") throw new Error("expected a save");
+
+    expect(outcome.load.carrierId).toBe("carrier-known");
+    expect(outcome.carrierLinked).toBe(true);
+    expect(carriers.rows).toHaveLength(1);
+  });
+
+  it("does not invent a carrier for a number nobody has vetted", async () => {
+    const { update, carriers, saved, unchanged } = await given();
+
+    const outcome = await update(scope, saved.load.id, {
+      ...unchanged(),
+      carrierMcNumber: "111111",
+    });
+    if (outcome.status !== "saved") throw new Error("expected a save");
+
+    expect(carriers.rows).toHaveLength(0);
+    expect(outcome.load.carrierId).toBeNull();
+    expect(outcome.carrierLinked).toBe(false);
+  });
+
+  it("will not touch another brokerage's load", async () => {
+    const { update, saved, unchanged } = await given();
+
+    const outcome = await update(otherScope, saved.load.id, unchanged());
+    expect(outcome.status).toBe("not_found");
+  });
+
+  it("reports a load that does not exist", async () => {
+    const { update, unchanged } = await given();
+
+    const outcome = await update(scope, "load-nope", unchanged());
+    expect(outcome.status).toBe("not_found");
+  });
+});
