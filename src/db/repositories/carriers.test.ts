@@ -207,6 +207,83 @@ describe("carrier check repository", () => {
 
       expect(await checks.latestFor(rival, carrier.id)).toBeNull();
       expect(await checks.historyFor(rival, carrier.id)).toEqual([]);
+      expect(await checks.latestForEach(rival, [carrier.id])).toEqual(new Map());
+    });
+  });
+
+  describe("latestForEach", () => {
+    it("returns the newest check per carrier in one query", async () => {
+      await withRollback(async (tx) => {
+        const scope = await seedBrokerage(tx);
+        const carriers = createCarrierRepository(tx);
+        const checks = createCarrierCheckRepository(tx);
+
+        const one = await carriers.create(scope, {
+          dotNumber: "1111111",
+          legalName: "ONE LLC",
+        });
+        const two = await carriers.create(scope, {
+          dotNumber: "2222222",
+          legalName: "TWO LLC",
+        });
+
+        await checks.record(scope, {
+          carrierId: one.id,
+          source: "fmcsa.qcmobile",
+          payload: { seq: 1 },
+          facts: cleanFacts,
+          verdict: evaluateCarrier(cleanFacts),
+          checkedAt: new Date("2026-10-01T12:00:00Z"),
+        });
+        const newest = await checks.record(scope, {
+          carrierId: one.id,
+          source: "fmcsa.qcmobile",
+          payload: { seq: 2 },
+          facts: cleanFacts,
+          verdict: evaluateCarrier(cleanFacts),
+          checkedAt: new Date("2026-10-20T12:00:00Z"),
+        });
+        await checks.record(scope, {
+          carrierId: two.id,
+          source: "fmcsa.qcmobile",
+          payload: { seq: 3 },
+          facts: cleanFacts,
+          verdict: evaluateCarrier(cleanFacts),
+          checkedAt: new Date("2026-10-05T12:00:00Z"),
+        });
+
+        const latest = await checks.latestForEach(scope, [one.id, two.id]);
+
+        expect(latest.size).toBe(2);
+        expect(latest.get(one.id)?.id).toBe(newest.id);
+        expect(latest.get(one.id)?.payload).toEqual({ seq: 2 });
+        expect(latest.get(two.id)?.payload).toEqual({ seq: 3 });
+      });
+    });
+
+    it("omits carriers that have never been checked", async () => {
+      await withRollback(async (tx) => {
+        const scope = await seedBrokerage(tx);
+        const carrier = await createCarrierRepository(tx).create(scope, {
+          dotNumber: "1234567",
+          legalName: "NEVER CHECKED LLC",
+        });
+
+        const latest = await createCarrierCheckRepository(tx).latestForEach(scope, [
+          carrier.id,
+        ]);
+
+        expect(latest.has(carrier.id)).toBe(false);
+      });
+    });
+
+    it("short-circuits on an empty id list", async () => {
+      await withRollback(async (tx) => {
+        const scope = await seedBrokerage(tx);
+        expect(await createCarrierCheckRepository(tx).latestForEach(scope, [])).toEqual(
+          new Map(),
+        );
+      });
     });
   });
 });

@@ -30,6 +30,17 @@ export interface CarrierCheckRepository {
   record(scope: BrokerageScope, input: NewCarrierCheck): Promise<CarrierCheck>;
   /** Most recent check for a carrier, or null if it has never been vetted. */
   latestFor(scope: BrokerageScope, carrierId: string): Promise<CarrierCheck | null>;
+  /**
+   * Most recent check for each of the given carriers, keyed by carrier id.
+   * Carriers that have never been vetted are absent from the map.
+   *
+   * Exists so a list view showing every carrier's current verdict is one query
+   * rather than one per row.
+   */
+  latestForEach(
+    scope: BrokerageScope,
+    carrierIds: readonly string[],
+  ): Promise<Map<string, CarrierCheck>>;
   /** Newest first. The basis for Phase 3 monitoring diffs. */
   historyFor(
     scope: BrokerageScope,

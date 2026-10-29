@@ -58,10 +58,21 @@ The non-obvious ones, with the reasoning. Revisit these deliberately, not by acc
 - **Carrier checks store the raw payload, a derived projection, and a content hash.** The hash makes Phase 3 monitoring a cheap diff; the raw payload means verdicts can be re-derived when rules change. Verdicts are stamped with `CARRIER_RULESET_VERSION`.
 - **Tenancy is enforced at the repository boundary**, not by convention and not yet by RLS. Repository methods take a `BrokerageScope` first argument, so a call cannot be made without one. `src/server/tenant.ts` is the single place a scope enters the system.
 - **The domain boundary is enforced by lint**, not discipline: `src/domain/**` cannot import Next.js, React, Drizzle, postgres.js, Auth.js, or the app/db/env layers. That is what makes extracting it into a shared package later a cheap move.
+- **The app is gated by default, not page by page.** Everything lives under the `src/app/(app)/` route group whose layout redirects anyone without a session. Adding a route means opting _out_ of protection rather than remembering to opt in — the same reasoning as making every repository call take a `BrokerageScope`. **A layout is not a security boundary on its own:** it renders for page requests and does not run for server actions or route handlers, which are separately addressable. Those check independently (see `vetCarrierAction`), and pages use `requireBrokerage()`, which throws rather than renders if the guard was somehow bypassed.
 
 ### Known limits of the FMCSA data
 
-Relevant when the vetting rules are built out: most carriers are **unrated** (absence of a bad rating is not a good sign), and CSA Crash Indicator and HazMat percentiles are **not public** — a carrier can look clean to us and still be flagged in FMCSA's own screening. "Insurance on file" means a filing exists, not that coverage suits a given load.
+Most carriers are **unrated** (absence of a bad rating is not a good sign), and CSA Crash Indicator and HazMat percentiles are **not public** — a carrier can look clean to us and still be flagged in FMCSA's own screening. "Insurance on file" means a filing exists, not that coverage suits a given load. None of it detects identity theft or double brokering. `DataLimitsNote` in `src/app/(app)/carriers/ui.tsx` states all of this on the screen where the booking decision is made.
+
+One mapping gap worth knowing: a carrier with no interstate authority on file but `allowedToOperate: "Y"` is reported as active. That is correct for an intrastate move and wrong for an interstate one, and the payload does not say which the broker is booking. The verdict rules cannot close this.
+
+### Quirks of the QCMobile API
+
+Discovered by probing it, not from the docs — the docs are wrong in places.
+
+- **A rejected or missing key returns HTTP 404** with `content` as a plain string (`"Webkey not found"`, `"Must provide Webkey"`). By status alone this is identical to an unknown carrier, so the client parses the body before trusting the status. Reporting "no such carrier" when we never authenticated is the failure mode the whole `CarrierLookupError` taxonomy exists to prevent.
+- **The published element list disagrees with the wire format**: docs say `allowToOperate` and `outOfService`, the API sends `allowedToOperate` and `oosDate`. Counts arrive as numbers or as strings. Hence the deliberately permissive schema.
+- **`content` is an object for a DOT lookup and an array for a docket-number lookup.** Confirmed live against MC-133655 — the docs say "Object" for both. Since MC is the primary way brokers search, an object-only schema would have failed the main path.
 
 ## Domain glossary
 
@@ -119,31 +130,45 @@ Prioritize by client demand:
 - Load intake built behind an interface so email ingestion (Phase 3) is just another source
 - Keep `/src/domain` free of framework code so modules can move into the product
 
-## Current state (first session complete)
+## Current state (carrier vetting built)
 
-The foundation is built and verified: `npm test` (46 tests), `npm run lint`, `npm run typecheck`, and `npm run build` all pass.
+Verified: `npm test` (133 tests), `npm run lint`, `npm run typecheck`, and `npm run build` all pass.
+
+**Carrier vetting is implemented end to end.** Sign in, enter an MC or USDOT number, get a pass/warn/fail verdict with reasons, and a stored snapshot. `/carriers` lists every carrier with its current verdict; `/carriers/[id]` shows the latest check, the derived facts, and the full history.
+
+The flow: `parseCarrierIdentifier` → `CarrierLookup` port → FMCSA adapter → `CarrierFacts` → `evaluateCarrier` → persisted `CarrierCheck`. `createVetCarrier` in `src/domain/carrier/vetting.ts` depends only on ports, so the whole use case is tested with in-memory fakes; the adapters are tested separately against fixtures.
+
+A re-check reports whether the payload moved (`changed`), by comparing the content hash against the previous check. Unchanged checks are still recorded — the audit trail answers "we looked on this date and saw this", which a diff-only log cannot.
 
 **Entities (12 tables).** Seven business tables — `Brokerage`, `Party`, `Load`, `Stop`, `Carrier`, `CarrierCheck`, `Document` — plus Auth.js's `User`/`Account`/`Session`/`VerificationToken` and a `Membership` join carrying `brokerageId` + role. `Stop` is an addition to the original six; see "Foundation decisions".
 
 **Layout.**
 
-- `src/domain/` — framework-free. Money, time windows, carrier facts and verdicts, `details` schemas, ports (`DocumentStore`, `Extractor`, repositories)
+- `src/domain/` — framework-free. Money, time windows, carrier facts, verdicts, the vetting use case, `details` schemas, ports (`CarrierLookup`, `DocumentStore`, `Extractor`, repositories)
 - `src/db/` — Drizzle schema, client, repository implementations
+- `src/integrations/` — outbound vendor adapters. `fmcsa/` implements `CarrierLookup`: a permissive zod schema, the payload→facts mapper, and the HTTP client
 - `src/env/` — zod-parsed env, split by concern so a migration doesn't require an email provider key
-- `src/server/tenant.ts` — the only place a `BrokerageScope` is created from a session
+- `src/server/tenant.ts` — the only place a `BrokerageScope` is created from a session. `resolveSession()` returns three states, not two: signed out, **signed in with no brokerage**, and ready. The middle one needs its own screen — folding it into "signed out" bounces the user to `/signin`, which redirects signed-in users back, forever. Wrapped in React `cache` so the layout and the page beneath it share one session read
+- `src/server/carriers.ts` — composition root for vetting. Deliberately **not** `server-only`: nothing in it touches a request, and Phase 3's scheduled re-checks are a plain Node process that needs exactly this module. `server-only` belongs on modules that read a session
 - `src/test/` — transaction-rollback harness and global migration setup
 
-**Getting started.** Copy `.env.example` to `.env.local`, then `npm run db:up && npm run db:migrate && npm test`.
+**Getting started.** Copy `.env.example` to `.env.local`, then `npm run db:up && npm run db:migrate && npm test`. Carrier lookups additionally need `FMCSA_WEB_KEY`; without it the vetting screen renders a setup notice instead of failing. `FMCSA_BASE_URL` points the client at a stub to exercise the flow without a key.
 
 **Deployed.** https://freight-broker-toolkit.vercel.app, on Neon Postgres provisioned through the Vercel marketplace; the schema is migrated there. The repo is connected, so pushes deploy automatically — `main` to production, branches to previews. Note that `AUTH_RESEND_KEY` and `AUTH_EMAIL_FROM` have to be set in the Vercel environment as well as `.env.local`; a key that only exists locally will not make deployed sign-in work.
 
 ### Deliberately not built yet
 
 - Repositories for `Load`, `Party`, `Stop`, `Document` — the tables exist; access patterns should be designed against a real module, not guessed
-- Any UI beyond the default scaffold, and any sign-in page
-- The FMCSA client, PDF renderer, and LLM extractor — ports exist, implementations do not
+- The PDF renderer and LLM extractor — ports exist, implementations do not
 - A `DocumentStore` implementation (the local-filesystem adapter lands with doc generation)
+- **Refreshing a carrier's name or address on re-vet.** `vetCarrier` sets `details` when it creates a carrier and never updates it, because `CarrierRepository` has no update method. Stale rather than wrong — the raw payload on every check has the current values. Add the method when a screen needs it
+- Searching a carrier by name (the QCMobile `/carriers/name/:name` endpoint). Brokers vet by number; add this only if discovery says otherwise
 
 ### Next session
 
-Build **carrier vetting**. It's the smallest module, uses a public API, has objectively verifiable output, and makes a useful demo for discovery calls. The domain pieces (facts, verdict rules, snapshot hashing) and persistence are already in place and tested — what's missing is the FMCSA client, the mapping from its payload to `CarrierFacts`, and a UI.
+Open. Two reasonable directions:
+
+- **Validate with what exists.** Carrier vetting is demoable now and is the cheapest thing to put in front of a broker on a discovery call. Feedback here is worth more than another module.
+- **Load intake**, if discovery calls are already pointing at re-keying as the bigger pain. It is the module with the most uncertainty (LLM provider undecided on purpose, field list unconfirmed), so it benefits most from real rate cons.
+
+Do not start document generation first — it consumes a load record, and load intake defines what that record actually contains.

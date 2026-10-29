@@ -1,12 +1,37 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --surface: #fafafa;
+  --border: #e2e2e2;
+  --muted: #666666;
+  --accent: #3058d6;
+
+  /* Verdict levels. Colour is never the only signal — every badge carries its
+     level as text, because a pass/warn/fail that reads only as green/amber/red
+     is unusable for a colour-blind dispatcher. */
+  --pass-fg: #15683c;
+  --pass-bg: #eaf6ee;
+  --warn-fg: #8a5300;
+  --warn-bg: #fdf3e2;
+  --fail-fg: #a81f26;
+  --fail-bg: #fdeded;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+    --surface: #141414;
+    --border: #2a2a2a;
+    --muted: #999999;
+    --accent: #7d9bf0;
+
+    --pass-fg: #5cc98c;
+    --pass-bg: #10251a;
+    --warn-fg: #e0ab5a;
+    --warn-bg: #261c0c;
+    --fail-fg: #f08b8f;
+    --fail-bg: #2a1214;
   }
 }
 
