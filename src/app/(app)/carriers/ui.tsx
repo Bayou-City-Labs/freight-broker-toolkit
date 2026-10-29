@@ -1,6 +1,6 @@
 import type { CarrierFacts } from "@/domain/carrier/snapshot";
 import type { VerdictLevel } from "@/domain/carrier/verdict";
-import styles from "./carriers.module.css";
+import styles from "../../ui.module.css";
 
 const LEVEL_CLASS: Record<VerdictLevel, string> = {
   pass: styles.pass,

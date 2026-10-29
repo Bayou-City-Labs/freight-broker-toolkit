@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { initialVetFormState, vetCarrierAction } from "./actions";
-import styles from "./carriers.module.css";
+import styles from "../../ui.module.css";
 
 /**
  * The kind selector defaults to MC because that is what a rate con and a

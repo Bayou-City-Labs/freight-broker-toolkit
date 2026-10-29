@@ -44,7 +44,8 @@ src/db/           Drizzle schema, client, repository implementations.
 src/integrations/ Outbound vendor adapters. fmcsa/ implements CarrierLookup.
 src/env/          zod-parsed environment, split by concern.
 src/server/       Composition roots and request-scoped helpers.
-src/app/          Routes and UI.
+src/app/          Routes and UI. Everything under (app)/ requires a session;
+                  /signin sits outside the group.
 src/test/         Transaction-rollback harness and migration setup.
 ```
 
@@ -81,9 +82,15 @@ rather than failing a lookup it cannot make.
 To exercise the flow without a real key, point `FMCSA_BASE_URL` at a stub that
 serves a QCMobile-shaped response.
 
+### Auth
+
+The app is gated by default. Everything lives under the `src/app/(app)/` route group, whose layout redirects anyone without a session to `/signin` — so adding a route means opting _out_ of protection rather than remembering to opt in. There are no public pages.
+
+A layout is **not** a security boundary on its own: it renders for page requests and does not run for server actions or route handlers. Those check independently.
+
 ### Getting a tenant
 
-Auth.js creates a user on first sign-in, but nothing creates the brokerage that user belongs to — so `getCurrentBrokerage()` returns `null` and repository calls have no scope. Until there's a real onboarding flow, bridge it:
+Auth.js creates a user on first sign-in, but nothing creates the brokerage that user belongs to — so there is no scope for repository calls. The app shows a "No brokerage yet" screen rather than looping back to sign-in. Until there's a real onboarding flow, bridge it:
 
 ```bash
 npm run db:seed -- you@example.com                        # local

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { auth, signIn } from "@/auth";
-import styles from "../carriers/carriers.module.css";
+import styles from "../ui.module.css";
 
 export const metadata = {
   title: "Sign in",

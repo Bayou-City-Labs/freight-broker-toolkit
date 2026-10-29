@@ -4,8 +4,8 @@ import { Suspense } from "react";
 import type { CarrierCheck } from "@/domain/carrier/carrier";
 import type { VerdictLevel } from "@/domain/carrier/verdict";
 import { carrierCheckRepository, carrierRepository } from "@/server/carriers";
-import { getCurrentBrokerage } from "@/server/tenant";
-import styles from "../carriers.module.css";
+import { requireBrokerage } from "@/server/tenant";
+import styles from "../../../ui.module.css";
 import { DataLimitsNote, FactList, VerdictBadge, formatCheckedAt } from "../ui";
 
 export default function CarrierDetailPage({ params }: PageProps<"/carriers/[id]">) {
@@ -28,18 +28,7 @@ async function CarrierDetail({
   params: PageProps<"/carriers/[id]">["params"];
 }) {
   const { id } = await params;
-
-  const scope = await getCurrentBrokerage();
-  if (!scope) {
-    return (
-      <p className={styles.empty}>
-        <Link href="/signin" style={{ textDecoration: "underline" }}>
-          Sign in
-        </Link>{" "}
-        to view carriers.
-      </p>
-    );
-  }
+  const scope = await requireBrokerage();
 
   // Scoped read: a carrier belonging to another brokerage is indistinguishable
   // from one that does not exist.

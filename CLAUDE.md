@@ -58,10 +58,11 @@ The non-obvious ones, with the reasoning. Revisit these deliberately, not by acc
 - **Carrier checks store the raw payload, a derived projection, and a content hash.** The hash makes Phase 3 monitoring a cheap diff; the raw payload means verdicts can be re-derived when rules change. Verdicts are stamped with `CARRIER_RULESET_VERSION`.
 - **Tenancy is enforced at the repository boundary**, not by convention and not yet by RLS. Repository methods take a `BrokerageScope` first argument, so a call cannot be made without one. `src/server/tenant.ts` is the single place a scope enters the system.
 - **The domain boundary is enforced by lint**, not discipline: `src/domain/**` cannot import Next.js, React, Drizzle, postgres.js, Auth.js, or the app/db/env layers. That is what makes extracting it into a shared package later a cheap move.
+- **The app is gated by default, not page by page.** Everything lives under the `src/app/(app)/` route group whose layout redirects anyone without a session. Adding a route means opting _out_ of protection rather than remembering to opt in — the same reasoning as making every repository call take a `BrokerageScope`. **A layout is not a security boundary on its own:** it renders for page requests and does not run for server actions or route handlers, which are separately addressable. Those check independently (see `vetCarrierAction`), and pages use `requireBrokerage()`, which throws rather than renders if the guard was somehow bypassed.
 
 ### Known limits of the FMCSA data
 
-Most carriers are **unrated** (absence of a bad rating is not a good sign), and CSA Crash Indicator and HazMat percentiles are **not public** — a carrier can look clean to us and still be flagged in FMCSA's own screening. "Insurance on file" means a filing exists, not that coverage suits a given load. None of it detects identity theft or double brokering. `DataLimitsNote` in `src/app/carriers/ui.tsx` states all of this on the screen where the booking decision is made.
+Most carriers are **unrated** (absence of a bad rating is not a good sign), and CSA Crash Indicator and HazMat percentiles are **not public** — a carrier can look clean to us and still be flagged in FMCSA's own screening. "Insurance on file" means a filing exists, not that coverage suits a given load. None of it detects identity theft or double brokering. `DataLimitsNote` in `src/app/(app)/carriers/ui.tsx` states all of this on the screen where the booking decision is made.
 
 One mapping gap worth knowing: a carrier with no interstate authority on file but `allowedToOperate: "Y"` is reported as active. That is correct for an intrastate move and wrong for an interstate one, and the payload does not say which the broker is booking. The verdict rules cannot close this.
 
@@ -71,7 +72,7 @@ Discovered by probing it, not from the docs — the docs are wrong in places.
 
 - **A rejected or missing key returns HTTP 404** with `content` as a plain string (`"Webkey not found"`, `"Must provide Webkey"`). By status alone this is identical to an unknown carrier, so the client parses the body before trusting the status. Reporting "no such carrier" when we never authenticated is the failure mode the whole `CarrierLookupError` taxonomy exists to prevent.
 - **The published element list disagrees with the wire format**: docs say `allowToOperate` and `outOfService`, the API sends `allowedToOperate` and `oosDate`. Counts arrive as numbers or as strings. Hence the deliberately permissive schema.
-- **`content` is an object for a DOT lookup and may be an array for a docket-number lookup.** Both are accepted.
+- **`content` is an object for a DOT lookup and an array for a docket-number lookup.** Confirmed live against MC-133655 — the docs say "Object" for both. Since MC is the primary way brokers search, an object-only schema would have failed the main path.
 
 ## Domain glossary
 
@@ -147,7 +148,7 @@ A re-check reports whether the payload moved (`changed`), by comparing the conte
 - `src/db/` — Drizzle schema, client, repository implementations
 - `src/integrations/` — outbound vendor adapters. `fmcsa/` implements `CarrierLookup`: a permissive zod schema, the payload→facts mapper, and the HTTP client
 - `src/env/` — zod-parsed env, split by concern so a migration doesn't require an email provider key
-- `src/server/tenant.ts` — the only place a `BrokerageScope` is created from a session
+- `src/server/tenant.ts` — the only place a `BrokerageScope` is created from a session. `resolveSession()` returns three states, not two: signed out, **signed in with no brokerage**, and ready. The middle one needs its own screen — folding it into "signed out" bounces the user to `/signin`, which redirects signed-in users back, forever. Wrapped in React `cache` so the layout and the page beneath it share one session read
 - `src/server/carriers.ts` — composition root for vetting. Deliberately **not** `server-only`: nothing in it touches a request, and Phase 3's scheduled re-checks are a plain Node process that needs exactly this module. `server-only` belongs on modules that read a session
 - `src/test/` — transaction-rollback harness and global migration setup
 

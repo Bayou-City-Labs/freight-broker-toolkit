@@ -6,8 +6,8 @@ import {
   carrierRepository,
   isCarrierLookupConfigured,
 } from "@/server/carriers";
-import { getCurrentBrokerage } from "@/server/tenant";
-import styles from "./carriers.module.css";
+import { requireBrokerage } from "@/server/tenant";
+import styles from "../../ui.module.css";
 import { DataLimitsNote, UncheckedBadge, VerdictBadge, formatCheckedAt } from "./ui";
 import { VetForm } from "./vet-form";
 
@@ -37,18 +37,9 @@ export default function CarriersPage() {
 }
 
 async function Workspace() {
-  const scope = await getCurrentBrokerage();
-
-  if (!scope) {
-    return (
-      <p className={styles.empty}>
-        <Link href="/signin" style={{ textDecoration: "underline" }}>
-          Sign in
-        </Link>{" "}
-        to vet carriers.
-      </p>
-    );
-  }
+  // The route group's layout has already guaranteed a brokerage; this throws
+  // rather than renders if that guard was somehow bypassed.
+  const scope = await requireBrokerage();
 
   const carriers = await carrierRepository.list(scope);
   const latest = await carrierCheckRepository.latestForEach(
