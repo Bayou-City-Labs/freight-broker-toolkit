@@ -1,7 +1,14 @@
-import { z } from "zod";
 import { intakeProvenanceSchema, type IntakeProvenance } from "../details";
-import { parseEquipmentType } from "../load/equipment";
-import type { Load, LoadStatus, NewStop, Stop, StopType } from "../load/load";
+import type { Load, LoadStatus, NewStop, Stop } from "../load/load";
+import {
+  classifyEquipment,
+  findCarrier,
+  loadValuesSchema,
+  stopValuesSchema,
+  toNewStop,
+  type LoadValues,
+  type StopValues,
+} from "../load/load-values";
 import type {
   CarrierRepository,
   LoadRepository,
@@ -9,7 +16,6 @@ import type {
 } from "../ports/repositories";
 import type { BrokerageScope } from "../tenancy";
 import type { TextSource } from "./document-text";
-import type { StopKind } from "./load-draft";
 
 /**
  * Turning a reviewed draft into a real load.
@@ -24,24 +30,6 @@ import type { StopKind } from "./load-draft";
  *
  * Depends only on ports, so the flow is tested end to end against fakes.
  */
-
-/** A stop as a human confirmed it. `partyName` is required: a stop is a place. */
-export interface ConfirmedStop {
-  readonly kind: StopKind;
-  readonly partyName: string;
-  readonly addressLine: string | null;
-  readonly city: string | null;
-  readonly state: string | null;
-  readonly postalCode: string | null;
-  /** Local wall date, `YYYY-MM-DD`. */
-  readonly date: string | null;
-  /** Local wall time, `HH:MM`. */
-  readonly windowStart: string | null;
-  readonly windowEnd: string | null;
-  readonly referenceNumber: string | null;
-  /** What the document said about timing, kept verbatim for audit. */
-  readonly windowRawText: string | null;
-}
 
 /**
  * How a draft came to be, recorded on the saved load.
@@ -67,61 +55,13 @@ export type { FieldCorrection, IntakeProvenance } from "../details";
 type Covers<Narrow extends Wide, Wide> = Narrow;
 export type CoveredTextSource = Covers<TextSource, IntakeProvenance["textSource"]>;
 
-export interface ConfirmedLoad {
-  readonly referenceNumber: string;
-  readonly carrierName: string | null;
-  readonly carrierMcNumber: string | null;
-  readonly carrierDotNumber: string | null;
-  readonly commodity: string | null;
-  readonly weightLbs: number | null;
-  /** Free text, as the document wrote it. Classified below, never discarded. */
-  readonly equipment: string | null;
-  readonly carrierRateCents: number | null;
-  readonly stops: readonly ConfirmedStop[];
-  readonly provenance: IntakeProvenance;
-}
+/** A stop as a human confirmed it. */
+export type ConfirmedStop = StopValues;
+export const confirmedStopSchema = stopValuesSchema;
 
-// --- Validation ----------------------------------------------------------
+export type ConfirmedLoad = LoadValues & { readonly provenance: IntakeProvenance };
 
-const nullableText = z
-  .string()
-  .trim()
-  .transform((value) => (value.length === 0 ? null : value))
-  .nullable();
-
-export const confirmedStopSchema = z.object({
-  kind: z.enum(["pickup", "delivery"]),
-  partyName: z.string().trim().min(1, "Every stop needs a name"),
-  addressLine: nullableText,
-  city: nullableText,
-  state: nullableText,
-  postalCode: nullableText,
-  date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD")
-    .nullable(),
-  windowStart: z
-    .string()
-    .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "expected HH:MM")
-    .nullable(),
-  windowEnd: z
-    .string()
-    .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "expected HH:MM")
-    .nullable(),
-  referenceNumber: nullableText,
-  windowRawText: nullableText,
-});
-
-export const confirmedLoadSchema = z.object({
-  referenceNumber: z.string().trim().min(1, "A load needs a reference number"),
-  carrierName: nullableText,
-  carrierMcNumber: nullableText,
-  carrierDotNumber: nullableText,
-  commodity: nullableText,
-  weightLbs: z.number().nonnegative().nullable(),
-  equipment: nullableText,
-  carrierRateCents: z.number().int().nullable(),
-  stops: z.array(confirmedStopSchema).min(1, "A load needs at least one stop"),
+export const confirmedLoadSchema = loadValuesSchema.extend({
   provenance: intakeProvenanceSchema,
 });
 
@@ -172,20 +112,7 @@ export function createConfirmDraft({
     const stops: NewStop[] = [];
     for (const [index, stop] of confirmed.stops.entries()) {
       const party = await resolveParty(scope, parties, stop);
-
-      stops.push({
-        sequence: index,
-        type: STOP_TYPE_FOR[stop.kind],
-        partyId: party.id,
-        opensAtLocal: joinLocal(stop.date, stop.windowStart),
-        closesAtLocal: joinLocal(stop.date, stop.windowEnd),
-        // The facility's zone, when we know it. Never inferred from the state
-        // on the address: a guess here changes what every window means.
-        timeZone: party.timeZone,
-        appointmentType: appointmentTypeFor(stop),
-        windowRawText: stop.windowRawText,
-        details: stop.referenceNumber ? { appointmentNumber: stop.referenceNumber } : {},
-      });
+      stops.push(toNewStop(stop, index, party));
     }
 
     const { load, stops: saved } = await loads.create(
@@ -214,36 +141,6 @@ export function createConfirmDraft({
   };
 }
 
-const STOP_TYPE_FOR: Record<StopKind, StopType> = {
-  pickup: "pickup",
-  delivery: "delivery",
-};
-
-/**
- * Looks for a carrier we already hold, by the numbers on the document.
- *
- * Deliberately does **not** create one. A carrier record here is the subject of
- * a vetting history, and one conjured from a name on a PDF would sit in the
- * carrier list looking exactly like a carrier someone had actually checked.
- * Carriers enter the system through a lookup, which is the only path that can
- * tell us the name is real.
- */
-async function findCarrier(
-  scope: BrokerageScope,
-  carriers: CarrierRepository,
-  confirmed: ConfirmedLoad,
-) {
-  if (confirmed.carrierMcNumber) {
-    const byMc = await carriers.findByMcNumber(scope, confirmed.carrierMcNumber);
-    if (byMc) return byMc;
-  }
-  if (confirmed.carrierDotNumber) {
-    const byDot = await carriers.findByDotNumber(scope, confirmed.carrierDotNumber);
-    if (byDot) return byDot;
-  }
-  return null;
-}
-
 async function resolveParty(
   scope: BrokerageScope,
   parties: PartyRepository,
@@ -262,29 +159,6 @@ async function resolveParty(
 }
 
 /**
- * A stated range is a window the facility will honour; a single time is an
- * appointment. Null when the document gave no time at all — saying "FCFS"
- * because we read nothing would be an invention, and drivers plan around it.
- */
-function appointmentTypeFor(stop: ConfirmedStop) {
-  if (stop.windowStart === null) return null;
-  return stop.windowEnd === null ? "appointment" : "fcfs";
-}
-
-/**
- * `other` and `null` are different answers.
- *
- * `other` means the document stated equipment that is not one of our types —
- * a Conestoga, a hotshot. `null` means it stated none. Collapsing them would
- * lose the difference between "unusual trailer" and "nobody said", and the
- * original phrase is kept in `details.equipmentAsWritten` either way.
- */
-function classifyEquipment(equipment: string | null) {
-  if (equipment === null) return null;
-  return parseEquipmentType(equipment) ?? "other";
-}
-
-/**
  * A document naming a carrier and a rate is an agreement — a rate con — and
  * the load is booked. Anything else is a tender or a partial read, and stays a
  * draft. Intake does not know which document it was handed, so the status is
@@ -293,8 +167,4 @@ function classifyEquipment(equipment: string | null) {
 function inferStatus(confirmed: ConfirmedLoad): LoadStatus {
   const agreed = confirmed.carrierName !== null && confirmed.carrierRateCents !== null;
   return agreed ? "booked" : "draft";
-}
-
-function joinLocal(date: string | null, time: string | null): string | null {
-  return date && time ? `${date}T${time}` : null;
 }
