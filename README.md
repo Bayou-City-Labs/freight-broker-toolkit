@@ -57,7 +57,9 @@ npx tsx src/db/migrate.ts "postgresql://..."
 
 The repo is connected to the Vercel project, so pushes deploy automatically — `main` to production, branches to previews.
 
-**Magic-link email needs its key in two places.** `AUTH_RESEND_KEY` and `AUTH_EMAIL_FROM` live in `.env.local` for development _and_ in the Vercel environment for deployed sign-in; setting one does not set the other. `AUTH_EMAIL_FROM` must be an address on a domain verified in Resend.
+**Magic-link email needs its key in two places.** `AUTH_RESEND_KEY` and `AUTH_EMAIL_FROM` live in `.env.local` for development _and_ in the Vercel environment for deployed sign-in; setting one does not set the other.
+
+`AUTH_EMAIL_FROM` is currently **`onboarding@resend.dev`**, Resend's shared test sender. It needs no DNS setup, but it only delivers to the Resend account owner's own address — enough to exercise the sign-in flow, not enough to let anyone else log in. Before a real user touches this, verify a domain in Resend (`samklep.dev` is on the account but unverified) and switch the sender to an address on it.
 
 ```bash
 npx vercel env ls production          # check what's set
