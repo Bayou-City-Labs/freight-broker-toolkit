@@ -76,17 +76,21 @@ rather than failing a lookup it cannot make.
   `src/integrations/fmcsa/schema.ts` is deliberately permissive as a result:
   unknown values degrade to "unknown" instead of throwing, and the raw payload
   is stored whole regardless.
-- **The docket-number endpoint may return `content` as an array**, where the
-  DOT endpoint returns an object. Both are handled.
+- **The docket-number endpoint returns `content` as an array**, where the DOT
+  endpoint returns an object — the docs claim "Object" for both. Confirmed
+  live. MC is the primary way brokers search, so an object-only parser would
+  have broken the main path.
 
 To exercise the flow without a real key, point `FMCSA_BASE_URL` at a stub that
 serves a QCMobile-shaped response.
 
-### Auth
+## Auth
 
 The app is gated by default. Everything lives under the `src/app/(app)/` route group, whose layout redirects anyone without a session to `/signin` — so adding a route means opting _out_ of protection rather than remembering to opt in. There are no public pages.
 
 A layout is **not** a security boundary on its own: it renders for page requests and does not run for server actions or route handlers. Those check independently.
+
+Three session states, not two: signed out, signed in with no brokerage, and ready. The middle one gets its own screen — redirecting it to `/signin` would loop, because `/signin` sends signed-in users back.
 
 ### Getting a tenant
 
