@@ -55,10 +55,16 @@ Deploy with `npx vercel deploy --prod`. Apply migrations to a deployed database 
 npx tsx src/db/migrate.ts "postgresql://..."
 ```
 
-Two things are not wired up yet and need a browser:
+The repo is connected to the Vercel project, so pushes deploy automatically — `main` to production, branches to previews.
 
-1. **Auto-deploy on push.** `vercel git connect` fails until the Vercel GitHub App is authorized for the `Bayou-City-Labs` org. Until then, production deploys are manual.
-2. **Magic-link email.** `AUTH_RESEND_KEY` is a placeholder, so sign-in emails will not send. Replace it with a real key and set `AUTH_EMAIL_FROM` to an address on a Resend-verified domain.
+**Magic-link email needs its key in two places.** `AUTH_RESEND_KEY` and `AUTH_EMAIL_FROM` live in `.env.local` for development _and_ in the Vercel environment for deployed sign-in; setting one does not set the other.
+
+`AUTH_EMAIL_FROM` is currently **`onboarding@resend.dev`**, Resend's shared test sender. It needs no DNS setup, but it only delivers to the Resend account owner's own address — enough to exercise the sign-in flow, not enough to let anyone else log in. Before a real user touches this, verify a domain in Resend (`samklep.dev` is on the account but unverified) and switch the sender to an address on it.
+
+```bash
+npx vercel env ls production          # check what's set
+printf '%s' "re_..." | npx vercel env add AUTH_RESEND_KEY production --force
+```
 
 ## Conventions
 
