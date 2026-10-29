@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, notInArray, sql } from "drizzle-orm";
 import { newId } from "@/domain/ids";
 import type { Load, Stop } from "@/domain/load/load";
 import type { LoadRepository } from "@/domain/ports/repositories";
@@ -114,6 +114,85 @@ export function createLoadRepository(executor: DbExecutor): LoadRepository {
           load: toLoad(loadRow),
           stops: stopRows.map(toStop).sort((a, b) => a.sequence - b.sequence),
         };
+      });
+    },
+
+    async update(scope, id, input, newStops) {
+      return executor.transaction(async (tx) => {
+        const [loadRow] = await tx
+          .update(loads)
+          .set({
+            referenceNumber: input.referenceNumber,
+            // No `?? "draft"` here, unlike `create`: see LoadUpdate.
+            status: input.status,
+            equipmentType: input.equipmentType ?? null,
+            commodityDescription: input.commodityDescription ?? null,
+            weightLbs: input.weightLbs ?? null,
+            customerRateCents: input.customerRateCents ?? null,
+            carrierPayCents: input.carrierPayCents ?? null,
+            carrierId: input.carrierId ?? null,
+            details: input.details ?? {},
+          })
+          .where(and(eq(loads.brokerageId, scope.brokerageId), eq(loads.id, id)))
+          .returning();
+
+        // Out of scope is indistinguishable from absent, and the transaction
+        // has written nothing else yet.
+        if (!loadRow) return null;
+
+        const kept = newStops
+          .map((stop) => stop.id)
+          .filter((stopId): stopId is string => typeof stopId === "string");
+
+        await tx
+          .delete(stops)
+          .where(
+            kept.length === 0
+              ? eq(stops.loadId, id)
+              : and(eq(stops.loadId, id), notInArray(stops.id, kept)),
+          );
+
+        // Sequences land in a negative range first. `stops_load_sequence_key`
+        // is unique on (load_id, sequence), so writing final sequences
+        // directly collides the moment two stops swap places. Nothing real
+        // occupies the negative range, so the intermediate state is safe.
+        for (const [index, stop] of newStops.entries()) {
+          const row = {
+            sequence: -1 - index,
+            type: stop.type,
+            partyId: stop.partyId,
+            opensAtLocal: stop.opensAtLocal ?? null,
+            closesAtLocal: stop.closesAtLocal ?? null,
+            timeZone: stop.timeZone ?? null,
+            appointmentType: stop.appointmentType ?? null,
+            windowRawText: stop.windowRawText ?? null,
+            details: stop.details ?? {},
+          };
+
+          if (stop.id) {
+            await tx
+              .update(stops)
+              .set(row)
+              .where(and(eq(stops.loadId, id), eq(stops.id, stop.id)));
+          } else {
+            await tx
+              .insert(stops)
+              .values({ id: newId(), brokerageId: scope.brokerageId, loadId: id, ...row });
+          }
+        }
+
+        await tx
+          .update(stops)
+          .set({ sequence: sql`-1 - ${stops.sequence}` })
+          .where(and(eq(stops.loadId, id), sql`${stops.sequence} < 0`));
+
+        const stopRows = await tx
+          .select()
+          .from(stops)
+          .where(and(eq(stops.brokerageId, scope.brokerageId), eq(stops.loadId, id)))
+          .orderBy(asc(stops.sequence));
+
+        return { load: toLoad(loadRow), stops: stopRows.map(toStop) };
       });
     },
 

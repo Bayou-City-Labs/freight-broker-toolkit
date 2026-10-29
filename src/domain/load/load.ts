@@ -136,3 +136,22 @@ export interface LoadWithStops {
   readonly load: Load;
   readonly stops: readonly Stop[];
 }
+
+/**
+ * The input to an update, as distinct from a create.
+ *
+ * `status` is required here where it is optional on `NewLoad`, and that is
+ * deliberate rather than tidy. `create` resolves an absent status with
+ * `input.status ?? "draft"`; an `update` doing the same would silently demote
+ * a booked load to a draft every time a caller omitted the field. Making it
+ * required means the compiler asks the question instead.
+ */
+export interface LoadUpdate extends NewLoad {
+  readonly status: LoadStatus;
+}
+
+/**
+ * A stop on its way into the database. An `id` means "this row already exists,
+ * keep it"; its absence means a stop someone added.
+ */
+export type StopWrite = NewStop & { readonly id?: string };

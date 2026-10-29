@@ -246,4 +246,160 @@ describe("load repository", () => {
       expect(await loads.findByReferenceNumber(scope, "884213")).toBeNull();
     });
   });
+
+  it("updates a load's fields and keeps the ones it was not given", async () => {
+    await withRollback(async (tx) => {
+      const scope = await seedBrokerage(tx);
+      const parties = createPartyRepository(tx);
+      const loads = createLoadRepository(tx);
+
+      const party = await parties.create(scope, { name: "ACME DISTRIBUTION" });
+      const created = await loads.create(
+        scope,
+        {
+          referenceNumber: "884213",
+          status: "booked",
+          carrierPayCents: 185_000,
+          customerRateCents: 210_000,
+        },
+        [{ sequence: 0, type: "pickup", partyId: party.id }],
+      );
+
+      const updated = await loads.update(
+        scope,
+        created.load.id,
+        {
+          referenceNumber: "884213",
+          status: created.load.status,
+          carrierPayCents: 190_000,
+          customerRateCents: created.load.customerRateCents,
+        },
+        [{ id: created.stops[0].id, sequence: 0, type: "pickup", partyId: party.id }],
+      );
+
+      expect(updated?.load.carrierPayCents).toBe(190_000);
+      // Status is not this feature's to change, and the customer rate is not on
+      // the edit form at all. Both have to survive a save that omits them.
+      expect(updated?.load.status).toBe("booked");
+      expect(updated?.load.customerRateCents).toBe(210_000);
+    });
+  });
+
+  it("keeps a stop's id and creation time across an edit", async () => {
+    await withRollback(async (tx) => {
+      const scope = await seedBrokerage(tx);
+      const parties = createPartyRepository(tx);
+      const loads = createLoadRepository(tx);
+
+      const party = await parties.create(scope, { name: "ACME DISTRIBUTION" });
+      const created = await loads.create(scope, { referenceNumber: "884213" }, [
+        { sequence: 0, type: "pickup", partyId: party.id, windowRawText: "PU 0800" },
+      ]);
+
+      const updated = await loads.update(
+        scope,
+        created.load.id,
+        { referenceNumber: "884213", status: "draft" },
+        [
+          {
+            id: created.stops[0].id,
+            sequence: 0,
+            type: "pickup",
+            partyId: party.id,
+            opensAtLocal: "2026-11-02T09:00",
+            windowRawText: "PU 0800",
+          },
+        ],
+      );
+
+      expect(updated?.stops[0].id).toBe(created.stops[0].id);
+      expect(updated?.stops[0].opensAtLocal).toBe("2026-11-02T09:00");
+      // What the document said survives an edit to the parsed window.
+      expect(updated?.stops[0].windowRawText).toBe("PU 0800");
+    });
+  });
+
+  it("swaps two stops without tripping the sequence constraint", async () => {
+    await withRollback(async (tx) => {
+      const scope = await seedBrokerage(tx);
+      const parties = createPartyRepository(tx);
+      const loads = createLoadRepository(tx);
+
+      const first = await parties.create(scope, { name: "ACME DISTRIBUTION" });
+      const second = await parties.create(scope, { name: "LONE STAR FOODS" });
+      const created = await loads.create(scope, { referenceNumber: "884213" }, [
+        { sequence: 0, type: "pickup", partyId: first.id },
+        { sequence: 1, type: "delivery", partyId: second.id },
+      ]);
+      const [a, b] = created.stops;
+
+      // stops_load_sequence_key is unique on (load_id, sequence): assigning
+      // final sequences directly collides on the first write.
+      const updated = await loads.update(
+        scope,
+        created.load.id,
+        { referenceNumber: "884213", status: "draft" },
+        [
+          { id: b.id, sequence: 0, type: "delivery", partyId: second.id },
+          { id: a.id, sequence: 1, type: "pickup", partyId: first.id },
+        ],
+      );
+
+      expect(updated?.stops.map((stop) => stop.id)).toEqual([b.id, a.id]);
+      expect(updated?.stops.map((stop) => stop.sequence)).toEqual([0, 1]);
+
+      const found = await loads.findById(scope, created.load.id);
+      expect(found?.stops.map((stop) => stop.id)).toEqual([b.id, a.id]);
+    });
+  });
+
+  it("deletes the stops an edit left out and inserts the ones it added", async () => {
+    await withRollback(async (tx) => {
+      const scope = await seedBrokerage(tx);
+      const parties = createPartyRepository(tx);
+      const loads = createLoadRepository(tx);
+
+      const party = await parties.create(scope, { name: "ACME DISTRIBUTION" });
+      const created = await loads.create(scope, { referenceNumber: "884213" }, [
+        { sequence: 0, type: "pickup", partyId: party.id },
+        { sequence: 1, type: "delivery", partyId: party.id },
+      ]);
+
+      const updated = await loads.update(
+        scope,
+        created.load.id,
+        { referenceNumber: "884213", status: "draft" },
+        [
+          { id: created.stops[1].id, sequence: 0, type: "delivery", partyId: party.id },
+          { sequence: 1, type: "delivery", partyId: party.id },
+        ],
+      );
+
+      expect(updated?.stops).toHaveLength(2);
+      expect(updated?.stops[0].id).toBe(created.stops[1].id);
+      expect(updated?.stops[1].id).not.toBe(created.stops[0].id);
+    });
+  });
+
+  it("will not update another brokerage's load", async () => {
+    await withRollback(async (tx) => {
+      const mine = await seedBrokerage(tx, "Mine");
+      const theirs = await seedBrokerage(tx, "Theirs");
+      const loads = createLoadRepository(tx);
+
+      const created = await loads.create(theirs, { referenceNumber: "884213" }, []);
+
+      expect(
+        await loads.update(
+          mine,
+          created.load.id,
+          { referenceNumber: "hijacked", status: "cancelled" },
+          [],
+        ),
+      ).toBeNull();
+
+      const found = await loads.findById(theirs, created.load.id);
+      expect(found?.load.referenceNumber).toBe("884213");
+    });
+  });
 });

@@ -101,6 +101,65 @@ function fakeLoads(seed: Load[] = []) {
 
       return { load, stops: saved };
     },
+    async update(s, id, input, newStops) {
+      const index = rows.findIndex((r) => r.brokerageId === s.brokerageId && r.id === id);
+      if (index === -1) return null;
+
+      const existing = rows[index];
+      const load: Load = {
+        ...existing,
+        referenceNumber: input.referenceNumber,
+        status: input.status,
+        equipmentType: input.equipmentType ?? null,
+        commodityDescription: input.commodityDescription ?? null,
+        weightLbs: input.weightLbs ?? null,
+        customerRateCents: input.customerRateCents ?? null,
+        carrierPayCents: input.carrierPayCents ?? null,
+        carrierId: input.carrierId ?? null,
+        details: input.details ?? {},
+      };
+      rows[index] = load;
+
+      const kept = newStops
+        .map((stop) => stop.id)
+        .filter((stopId): stopId is string => typeof stopId === "string");
+      const remaining = stopRows.filter(
+        (stop) => stop.loadId !== id || kept.includes(stop.id),
+      );
+      stopRows.length = 0;
+      stopRows.push(...remaining);
+
+      const saved = newStops.map((stop) => {
+        const current = stopRows.find((row) => row.id === stop.id && row.loadId === id);
+        return {
+          id: stop.id ?? `stop-${id}-${next++}`,
+          brokerageId: s.brokerageId,
+          loadId: id,
+          sequence: stop.sequence,
+          type: stop.type,
+          partyId: stop.partyId,
+          opensAtLocal: stop.opensAtLocal ?? null,
+          closesAtLocal: stop.closesAtLocal ?? null,
+          timeZone: stop.timeZone ?? null,
+          appointmentType: stop.appointmentType ?? null,
+          windowRawText: stop.windowRawText ?? null,
+          details: stop.details ?? current?.details ?? {},
+        };
+      });
+
+      for (const stop of saved) {
+        const position = stopRows.findIndex((row) => row.id === stop.id);
+        if (position === -1) stopRows.push(stop);
+        else stopRows[position] = stop;
+      }
+
+      return {
+        load,
+        stops: stopRows
+          .filter((stop) => stop.loadId === id)
+          .sort((a, b) => a.sequence - b.sequence),
+      };
+    },
     async findById(s, id): Promise<LoadWithStops | null> {
       const load = rows.find((r) => r.brokerageId === s.brokerageId && r.id === id);
       if (!load) return null;

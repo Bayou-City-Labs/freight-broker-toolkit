@@ -6,11 +6,13 @@ import type {
 } from "../carrier/carrier";
 import type {
   Load,
+  LoadUpdate,
   LoadWithStops,
   NewLoad,
   NewParty,
   NewStop,
   Party,
+  StopWrite,
 } from "../load/load";
 import type { BrokerageScope } from "../tenancy";
 
@@ -87,6 +89,19 @@ export interface LoadRepository {
     stops: readonly NewStop[],
   ): Promise<LoadWithStops>;
   findById(scope: BrokerageScope, id: string): Promise<LoadWithStops | null>;
+  /**
+   * Rewrites a load and its whole route as one unit.
+   *
+   * The route is replaced rather than patched: stops carrying an id are kept
+   * and renumbered, stops without one are inserted, and any stop of this load
+   * absent from the list is deleted. Null when the load is not in scope.
+   */
+  update(
+    scope: BrokerageScope,
+    id: string,
+    input: LoadUpdate,
+    stops: readonly StopWrite[],
+  ): Promise<LoadWithStops | null>;
   /**
    * Reference numbers are unique per brokerage, so intake has to know whether
    * the number it read off a document is already taken before it saves.
