@@ -2,7 +2,7 @@
 
 Automation tools for small and mid-size freight brokers, starting in Houston. Three modules, each usable on its own: **carrier vetting**, **load intake**, and **document generation**.
 
-Status: pre-validation. **Carrier vetting is built**; the other two modules are not. See [CLAUDE.md](./CLAUDE.md) for scope, roadmap, and the reasoning behind the design decisions.
+Status: pre-validation. **Carrier vetting is built**; the other two modules are not. Load intake is next — local-first extraction, no external LLM in the default path. See [CLAUDE.md](./CLAUDE.md) for scope, roadmap, and the reasoning behind the design decisions, and [docs/discovery.md](./docs/discovery.md) for what customer discovery is trying to answer.
 
 ## Getting started
 
