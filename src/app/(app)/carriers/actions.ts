@@ -10,15 +10,7 @@ import {
 import { CarrierLookupError } from "@/domain/ports/carrier-lookup";
 import { getCurrentBrokerage } from "@/server/tenant";
 import { vetCarrier } from "@/server/carriers";
-
-export type VetFormState =
-  | { readonly status: "idle" }
-  /** A finding: the provider answered, and has no such carrier. */
-  | { readonly status: "not_found"; readonly message: string }
-  /** We could not get an answer. Deliberately worded so it can't read as a pass. */
-  | { readonly status: "error"; readonly message: string };
-
-export const initialVetFormState: VetFormState = { status: "idle" };
+import type { VetFormState } from "./form-state";
 
 export async function vetCarrierAction(
   _previous: VetFormState,

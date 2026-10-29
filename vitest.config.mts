@@ -9,7 +9,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     setupFiles: ["./src/test/setup.ts"],
     globalSetup: ["./src/test/global-setup.ts"],
     // Repository tests share one Postgres database and isolate via

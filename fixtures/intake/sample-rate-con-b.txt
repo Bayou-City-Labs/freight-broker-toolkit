@@ -1,0 +1,19 @@
+ACME LOGISTICS LLC          RATE CONFIRMATION
+Load #: 991044              Date: 11/14/2026
+
+CARRIER: PORT CITY TRANSPORT LLC
+MC#: 999014     DOT#: 9990142
+
+PICKUP
+Shipper: BARBOURS CUT TERMINAL
+9400 La Porte Fwy, La Porte, TX 77571
+Date: 11/16/2026   Time: 0600-1000
+
+DELIVERY
+Consignee: OKLAHOMA CITY DEPOT
+2200 Exchange Ave, Oklahoma City, OK 73108
+Date: 11/17/2026   Time: 0900-1200
+
+Commodity: Frozen poultry   Weight: 38500 lbs
+Equipment: 53' Reefer
+Total Rate: $3,180.00

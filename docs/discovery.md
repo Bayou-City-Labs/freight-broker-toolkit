@@ -11,19 +11,25 @@ narrower thing: **what to ask, and which answers change the code.**
 > Could you send me two or three rate confirmations with the rates and
 > customer names blacked out?
 
-Load intake is blocked on a corpus. Not on a paying client — on documents.
-Everything below is secondary to this ask, and a broker who says yes has given
-more than one who agrees to a call.
+Not a blocker — the extractor and the template engine get built against
+synthetic and public samples. But synthetic fixtures are self-fulfilling: the
+same person writes the document and the template that reads it. Real documents
+are what stop the parser being designed around a generator's habits, and they
+are the only way to learn how messy production PDFs actually are.
 
-Three or four brokers' worth of documents is enough to answer the question the
-whole module hangs on.
+A broker who forwards two PDFs has given more than one who agrees to a call.
 
-## The question that decides the architecture
+## The question that sizes the investment
 
 **Do rate con layouts cluster by TMS vendor, or by shipper?**
 
-See "Load intake: build order and the one open question" in CLAUDE.md for why
-this flips the business model. In an interview it maps to:
+This is a business signal, **not** a build gate — the template engine is the
+same either way, and gets built against synthetic fixtures regardless. See
+"what a document corpus actually calibrates" in CLAUDE.md.
+
+What it predicts is whether Phase 2 self-serve is reachable: a "McLeod rate
+con" template is reusable across every future client, where a per-shipper
+template is bespoke work on every onboarding. In an interview it maps to:
 
 - _What system generates your rate cons?_ — if the answer is a TMS name
   (McLeod, AscendTMS, Tai, Turvo, Revenova) rather than "a Word template",
@@ -81,3 +87,10 @@ also data about the channel.
 | ---- | --- | ------- | --------- | ------- |
 
 _No entries yet._
+
+## Showing it to someone
+
+The intake module is built and demoable: [`load-intake.md`](./load-intake.md)
+walks the flow with screenshots and sample documents. A broker who will not
+send documents may still sit through a five-minute demo of their own workflow
+— and a demo is a better ask than a meeting, because it gives them something.

@@ -21,8 +21,42 @@ export const temperatureSchema = z.object({
   continuous: z.boolean().optional(),
 });
 
+/**
+ * How a load got here, when it came from a document rather than a keyboard.
+ *
+ * Lives on `details` rather than in columns because nothing queries it yet —
+ * it is read on one load at a time, and in bulk only when someone sits down to
+ * calibrate confidences. Promote it the day a screen filters on it.
+ *
+ * `textSource` mirrors `TextSource` in `intake/document-text.ts`. The two are
+ * linked by the compiler rather than by comment: provenance is built from a
+ * `DocumentText`, so a new source there fails to type-check here until it is
+ * added.
+ */
+export const fieldCorrectionSchema = z.object({
+  /** Dotted path, matching `flaggedFields`: "weightLbs", "stops.0.date". */
+  path: z.string(),
+  /** What the parser claimed before a human overruled it. */
+  confidence: z.number().min(0).max(1),
+});
+
+export const intakeProvenanceSchema = z
+  .object({
+    producedBy: z.string().min(1),
+    textSource: z.enum(["pdf-text", "ocr", "plain-text"]),
+    filename: z.string().nullable(),
+    corrections: z.array(fieldCorrectionSchema),
+    acceptedFlagged: z.array(z.string()),
+  })
+  .loose();
+
 export const loadDetailsSchema = z
   .object({
+    intake: intakeProvenanceSchema.optional(),
+    /** The equipment phrase the document used, before classification. */
+    equipmentAsWritten: z.string().optional(),
+    /** The carrier name as the document wrote it, which may not match a record. */
+    carrierAsWritten: z.string().optional(),
     temperature: temperatureSchema.optional(),
     hazmat: z.boolean().optional(),
     hazmatClass: z.string().optional(),
@@ -70,6 +104,8 @@ export const documentDetailsSchema = z
   })
   .loose();
 
+export type FieldCorrection = z.infer<typeof fieldCorrectionSchema>;
+export type IntakeProvenance = z.infer<typeof intakeProvenanceSchema>;
 export type LoadDetails = z.infer<typeof loadDetailsSchema>;
 export type StopDetails = z.infer<typeof stopDetailsSchema>;
 export type PartyDetails = z.infer<typeof partyDetailsSchema>;

@@ -9,31 +9,24 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import type { LoadDetails, StopDetails } from "@/domain/details";
+import type { EquipmentType, LoadStatus, StopType } from "@/domain/load/load";
 import type { AppointmentType } from "@/domain/time-window";
 import { carriers } from "./carrier";
 import { parties } from "./party";
 import { brokerageId, moneyCents, timestamps } from "./shared";
 
-export const LOAD_STATUSES = [
-  "draft",
-  "booked",
-  "dispatched",
-  "in_transit",
-  "delivered",
-  "cancelled",
-] as const;
-export type LoadStatus = (typeof LOAD_STATUSES)[number];
-
-export const EQUIPMENT_TYPES = [
-  "dry_van",
-  "reefer",
-  "flatbed",
-  "step_deck",
-  "container",
-  "power_only",
-  "other",
-] as const;
-export type EquipmentType = (typeof EQUIPMENT_TYPES)[number];
+// The status, equipment, and stop-type vocabularies live in
+// `@/domain/load/load` — they are business vocabulary a parser needs without
+// reaching for the database. Re-exported here so existing importers of the
+// schema keep working.
+export {
+  EQUIPMENT_TYPES,
+  LOAD_STATUSES,
+  STOP_TYPES,
+  type EquipmentType,
+  type LoadStatus,
+  type StopType,
+} from "@/domain/load/load";
 
 export const loads = pgTable(
   "loads",
@@ -59,9 +52,6 @@ export const loads = pgTable(
     index("loads_brokerage_status_idx").on(table.brokerageId, table.status),
   ],
 );
-
-export const STOP_TYPES = ["pickup", "delivery", "empty_return"] as const;
-export type StopType = (typeof STOP_TYPES)[number];
 
 /**
  * An ordered event on a load. Two stops is the common dry-van case; drayage

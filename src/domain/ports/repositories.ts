@@ -4,6 +4,14 @@ import type {
   NewCarrier,
   NewCarrierCheck,
 } from "../carrier/carrier";
+import type {
+  Load,
+  LoadWithStops,
+  NewLoad,
+  NewParty,
+  NewStop,
+  Party,
+} from "../load/load";
 import type { BrokerageScope } from "../tenancy";
 
 /**
@@ -14,9 +22,9 @@ import type { BrokerageScope } from "../tenancy";
  * caller can forget to apply, because there is no way to call these without
  * supplying it.
  *
- * Repositories for Load, Party, Stop, and Document are intentionally absent —
- * those tables exist, but their access patterns should be designed against a
- * real module rather than guessed at now.
+ * A Document repository is still absent — that table exists, but its access
+ * patterns belong to document generation, which is not built. Load and Party
+ * are here now because load intake is the real module they were waiting for.
  */
 export interface CarrierRepository {
   create(scope: BrokerageScope, input: NewCarrier): Promise<Carrier>;
@@ -47,4 +55,46 @@ export interface CarrierCheckRepository {
     carrierId: string,
     limit?: number,
   ): Promise<CarrierCheck[]>;
+}
+
+export interface PartyRepository {
+  create(scope: BrokerageScope, input: NewParty): Promise<Party>;
+  findById(scope: BrokerageScope, id: string): Promise<Party | null>;
+  /**
+   * Case-insensitive exact name match.
+   *
+   * Intake reuses a facility rather than creating "WALMART DC 6094" four times
+   * from four rate cons. Exact-match only on purpose: fuzzy matching here would
+   * eventually merge two genuinely different docks, and a duplicate party is a
+   * tidiness problem where a wrongly merged one puts freight at the wrong
+   * address.
+   */
+  findByName(scope: BrokerageScope, name: string): Promise<Party | null>;
+  list(scope: BrokerageScope, limit?: number): Promise<Party[]>;
+}
+
+export interface LoadRepository {
+  /**
+   * Creates a load and its stops as one unit.
+   *
+   * Not two methods: a load with no stops has no route, and a half-written
+   * route is worse than a failed import. The implementation wraps both inserts
+   * in a transaction.
+   */
+  create(
+    scope: BrokerageScope,
+    input: NewLoad,
+    stops: readonly NewStop[],
+  ): Promise<LoadWithStops>;
+  findById(scope: BrokerageScope, id: string): Promise<LoadWithStops | null>;
+  /**
+   * Reference numbers are unique per brokerage, so intake has to know whether
+   * the number it read off a document is already taken before it saves.
+   */
+  findByReferenceNumber(
+    scope: BrokerageScope,
+    referenceNumber: string,
+  ): Promise<Load | null>;
+  /** Newest first. */
+  list(scope: BrokerageScope, limit?: number): Promise<Load[]>;
 }

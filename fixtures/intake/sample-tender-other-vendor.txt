@@ -1,0 +1,21 @@
+TRANSIT PARTNERS GROUP
+LOAD TENDER
+
+Order Number: 55012
+Tender Date: 11/14/2026
+
+Hauler: LONE STAR TRUCKING
+Motor Carrier #: 999205
+
+Origin Facility: BEAUMONT YARD
+1500 Port Rd, Beaumont, TX 77701
+Ready: 11/18/2026   Window: 0700-1500
+
+Destination Facility: TULSA TERMINAL
+4100 Charles Page Blvd, Tulsa, OK 74127
+Due: 11/19/2026   Window: 0800-1600
+
+Product: Mixed dry goods
+Gross Weight: 41200 lbs
+Trailer: 53 Dry Van
+Agreed Amount: $2,900.00
