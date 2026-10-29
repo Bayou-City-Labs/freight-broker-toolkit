@@ -129,13 +129,13 @@ function fakeLoads(seed: Load[] = []) {
       stopRows.length = 0;
       stopRows.push(...remaining);
 
-      const saved = newStops.map((stop) => {
+      const saved = newStops.map((stop, index) => {
         const current = stopRows.find((row) => row.id === stop.id && row.loadId === id);
         return {
           id: stop.id ?? `stop-${id}-${next++}`,
           brokerageId: s.brokerageId,
           loadId: id,
-          sequence: stop.sequence,
+          sequence: index,
           type: stop.type,
           partyId: stop.partyId,
           opensAtLocal: stop.opensAtLocal ?? null,
