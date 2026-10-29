@@ -1,0 +1,19 @@
+ACME LOGISTICS LLC          RATE CONFIRMATION
+Load #: 884213              Date: 10/28/2026
+
+CARRIER: GULF COAST HAULING LLC
+MC#: 133655     DOT#: 264184
+
+PICKUP
+Shipper: HOUSTON TERMINAL WAREHOUSE
+2100 Navigation Blvd, Houston, TX 77003
+Date: 10/30/2026   Time: 0800-1200
+
+DELIVERY
+Consignee: DALLAS DISTRIBUTION CENTER
+500 Industrial Way, Dallas, TX 75201
+Date: 10/31/2026   Time: 1400-1700
+
+Commodity: Canned goods     Weight: 42000 lbs
+Equipment: 53' Dry Van
+Total Rate: $2,450.00

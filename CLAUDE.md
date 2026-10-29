@@ -35,32 +35,45 @@ Three modules, each usable on its own:
    - Look up a carrier by MC/DOT number using the FMCSA public data API: authority status, insurance on file, safety rating, out-of-service flags.
    - Show a pass/warn/fail summary and store a snapshot with a timestamp for the audit trail.
 
-### Load intake: build order and the one open question
+### Load intake: build order, and what a document corpus actually calibrates
 
-The architecture above is settled. What is **not** settled is whether the template parser generalises, and that single question decides whether this module productizes.
+Build order — **steps 1–4 are built** (see "Current state"):
 
-**The question:** do rate con layouts cluster by **TMS vendor** or by **shipper**?
+1. ~~**Text stage — digital PDFs with positions.**~~ Built. Also a plain-text stage, because a pasted email is the commonest intake there is.
+2. ~~**The review screen.**~~ Built, including the save into a real `Load` + `Stop[]` + `Party`.
+3. **Structure stage** — the generic label-proximity parser is built. Per-layout templates are **not**, and are the next decision, not the next task: build them where they measurably beat the generic parser on real documents.
+4. ~~**A corpus inspector.**~~ Built as a CLI: `npm run intake:inspect -- <file...>`.
 
-- Clustered by TMS (McLeod, AscendTMS, Tai, Turvo, Revenova, the load boards) — a "McLeod rate con" template is a durable asset that works for every client ever onboarded. The local-first approach is then clearly right, and templates are a moat.
-- Clustered by shipper — templates are hand-built per customer, break silently when a shipper tweaks a PDF, and Phase 2's "sign up and get value without a call" gate is unreachable. The Ollama fallback would need promoting from optional to default.
+**Real documents are not a build gate.** An earlier version of this file said not to build the structure stage before having a corpus. That was wrong, and it conflated two separate things: whether the template _engine_ can be built, and whether templating will be a good _strategy_. The engine — anchor labels, positions, regex, fingerprint selection — is identical whether a template corresponds to McLeod or to Acme Foods. It does not care what the cluster means. Build it against synthetic fixtures.
 
-Same code, opposite business. It cannot be answered from first principles, only by looking at real documents. So the build is ordered to stay useful in both worlds and to defer the structure stage until there is a corpus:
+What a corpus calibrates, none of which blocks the above:
 
-1. **Text stage — digital PDFs with positions.** Zero risk, needed by every downstream path, commits to nothing.
-2. **The review screen.** Per-field confidence, flagging, human edit-and-confirm, then save as a real `Load` + `Stop[]` + `Party`. This is where the product value actually is, it is identical regardless of which extractor wins, and it is the demoable part.
-3. **A corpus inspector.** Drop a PDF in, dump extracted text, positions, and a layout fingerprint. Not production code — the instrument for answering the question above.
-4. **Structure stage**, chosen with the corpus in front of us.
+- **Template authoring ergonomics — the real fork.** Five templates ever means hand-written objects forever. Fifty, with clients adding their own unaided, means a template editor, probably a teach-by-example flow over a rendered PDF. A different order of build, and a decision to make _after_ the engine exists.
+- **How good the Ollama fallback must be** — rare path or main path.
+- **Confidence calibration** — what a 0.6 from a template match should mean next to a 0.6 from an LLM, on one review screen.
 
-Do not build step 4 before step 3 has been pointed at real documents.
+**The trap in synthetic-only fixtures.** Author a dummy rate con, then write a template for it, and the template matches perfectly — because the same person wrote both sides. That validates the engine and proves nothing about the premise. Worse, the engine quietly gets shaped around whatever the generator emits: clean `Label: value` pairs produce an anchor matcher that assumes them, which then meets a real rate con whose pickup window sits in an unruled table, whose weight is a rotated stamp, and three of whose fields are one merged text run. Keep a handful of real documents to design against, even before there is coverage.
+
+**The business signal, which is separate from the code.** Whether layouts cluster by TMS vendor or by shipper predicts whether Phase 2 self-serve is reachable: a "McLeod rate con" template is reusable across every future client, where a per-shipper template is bespoke work on every onboarding. Worth knowing early for roadmap and pricing. It changes investment sizing, not the build.
 
 ### Known constraints on the intake pipeline
 
 Flagged before building, because each one changes the shape of the code:
 
 - **OCR does not fit in a request handler.** `tesseract.js` is WASM: cold start, language-data load, then seconds per page, and memory-hungry. A multi-page scanned rate con will exceed the function timeout on Vercel. That path needs a job queue and a status-polling UI — a materially bigger build than the digital-PDF path, and the reason the two stages are listed separately rather than as one step.
-- **`unpdf`'s convenience API does not return positions.** `extractText` gives plain strings; x/y requires `getDocumentProxy` and pdf.js `getTextContent()` items. Positions are load-bearing for the template approach, so the easy call is not the one to use.
-- **The existing `Extractor` port does not fit.** It takes a `z.ZodType<T>` and returns `T` — an LLM-shaped interface. The two-stage design wants text + positions from stage one, and `LoadDraft` + per-field confidence from stage two. Reshaping it is small, but it is the seam the whole module hangs off, so do it deliberately rather than bending the pipeline to the old signature.
+- ~~`unpdf`'s convenience API does not return positions.~~ **Wrong — corrected against the library.** `unpdf@2` exports `extractTextItems`, which returns `str`, `x`, `y`, `width`, `height`, `fontSize` and `hasEOL` per item. Two things that are true and useful: its x/y use PDF coordinates (**origin bottom-left**), so y is flipped to a top-left origin at the adapter boundary; and page dimensions are not included, so the adapter opens a `getDocumentProxy` once and reads `getViewport()` per page.
+- **`inspectPages` is how you detect a scan.** It returns `textLength`, `invisibleTextLength`, `imageCount` and `imageCoverage` per page. A page with no text and an image covering it needs OCR — a far better signal than catching an empty extraction downstream. It resolves to `{ totalPages, pages }`, **not** an array; `pages` is the part you want. Wired in as `TextPage.imageCoverage`, and `pageNeedsOcr` uses it for the case that actually bites: a faxed page is one full-page image with a transmission footer stamped on it, so it _has_ text and a test for emptiness waves it through to a parser that then finds nothing.
+- **Text arrives as fragments, not lines.** unpdf emits `"ACME"`, `" "`, `"LOGISTICS"` as separate items. Assembling lines by y-proximity is the adapter's job, and it is the part worth unit-testing, since every downstream parser depends on it.
+- ~~**The existing `Extractor` port does not fit.**~~ Reshaped into `TextExtractor` + `StructureParser` in `src/domain/ports/intake.ts`; the old `Extractor` is gone.
 - **`sharp` is a heavy native dependency.** Only pull it in when the OCR path is actually built.
+
+### Lessons from building it, which cost real time
+
+- **Geometry must not be smuggled through the text.** `toLines` normalizes a column gap to a single space by design — positions stay on the items. A first cut of the label parser then tried to split "Load #: 884213 Date: 10/28/2026" with a `\s{2,}` rule, which could never fire, so the load number silently swallowed the date on the one fixture that existed. The fix is `toColumns(line)`, which re-derives column breaks from item x-gaps. **If a rule needs to know where a value ends, read the items, not the string.**
+- **Right-aligned values are as common as inline ones.** "Total Rate: $2,450.00" puts the value in the _next_ column, so a parser that only reads the rest of the label's own column misses every total. Both layouts have to work: own column first, then later columns on the same row, then the line beneath.
+- **Section headings and party labels are different strengths.** `PICKUP` announces a section; `Shipper:` names the company inside one. Treating both as section starts reads the standard two-stop layout as four stops. Headings win; party labels are promoted only for documents that have no headings at all, which is what a pasted tender looks like.
+- **A `"use server"` file may export only async functions.** Exporting `initialVetFormState` from an actions module throws `A "use server" file can only export async functions, found object` at module evaluation and takes down whatever rendered it. It typechecks, it builds, and it only fails at runtime — the carrier module shipped with this and nothing caught it. Form state lives in a sibling `form-state.ts`.
+- **Compile-time green says nothing about render-time.** That bug was found by driving the real app, not by `tsc` or `next build`. Hence `review-form.test.tsx`: `renderToStaticMarkup` over the real components, which catches a render-time throw and pins the `name` attributes the server action depends on. Rendering a client component in Vitest needs `vi.mock` on the action module — importing it for real drags in Auth.js and `next/server`, which do not resolve outside Next's bundler.
 
 ### Out of scope for now
 
@@ -163,9 +176,26 @@ Prioritize by client demand:
 - Load intake built behind an interface so email ingestion (Phase 3) is just another source
 - Keep `/src/domain` free of framework code so modules can move into the product
 
-## Current state (carrier vetting built)
+## Current state (carrier vetting and load intake built)
 
-Verified: `npm test` (133 tests), `npm run lint`, `npm run typecheck`, and `npm run build` all pass.
+Verified: `npm test` (366 tests), `npm run lint`, `npm run typecheck`, and `npm run build` all pass — and the intake flow has been driven in a browser end to end, which is a different question (see below).
+
+**Load intake is implemented end to end.** Paste a rate confirmation or upload a digital PDF at `/loads/new`, get a draft with per-field confidence and the uncertain fields flagged where they sit, edit it, and save a real `Load` + ordered `Stop[]` + resolved `Party` rows. `/loads` lists them; `/loads/[id]` shows the route, the window as the document stated it, and how the load was read.
+
+The flow: `DocumentInput` → `TextExtractor` (`PdfTextExtractor` or the plain-text stage) → `DocumentText` with positions → `StructureParser` (`label-proximity-v1`) → `LoadDraft` with confidences → **a human** → `ConfirmedLoad` → `confirmDraft` → persisted `Load`/`Stop`/`Party`. `createIntakePipeline` and `createConfirmDraft` depend only on ports, so both are tested against fakes; `intake-flow.test.ts` drives the real adapters from the fixture PDF into real Postgres, because the failure this project actually hits is a layer written and never wired.
+
+Four things about it worth knowing without reading the code:
+
+- **A draft is never persisted.** It round-trips through the browser in a hidden field and is re-validated on the way back. A draft nobody confirms has no value, re-extraction is cheap and deterministic, and a `load_drafts` table would be a schema commitment made to serve a screen.
+- **Intake never creates a carrier.** A carrier record is the subject of a vetting history; one conjured from a name on a PDF would sit in the list looking checked. The name is kept in `details.carrierAsWritten`, the load links only to a carrier already held, and both the review screen and the load page say so out loud — with a one-click link to vet them.
+- **The corrections a reviewer makes are recorded** in `details.intake`, with the confidence the parser had claimed. That is the only moment the module can learn whether a confidence meant anything, and it cannot be reconstructed afterwards. It is the evidence the scale eventually gets tuned from.
+- **A name/number disagreement is reported, loudly.** The link is made on MC or DOT number, because that is what a document states precisely. When the number resolves to a carrier whose name is not the one the document used, the load page says so instead of quietly displaying the held carrier's name — that disagreement is the signature of double brokering or carrier identity theft, which the FMCSA data explicitly cannot detect but this _can_, for free, because both halves are in hand. `carrierNameMatches` normalizes corporate form and punctuation so "Gulf Coast Hauling, L.L.C." does not trip it; a warning that cries wolf stops being read.
+
+The whole flow has been driven in a browser end to end — paste, review, correct a field, save, and the duplicate-reference path — and that is how both the `"use server"` bug and the name-mismatch gap were found. **Neither was visible to 359 passing tests, `tsc`, or `next build`.** The name-mismatch gap in particular is the one worth remembering: no test would have been written for it, because nobody had had the thought yet. It took a real screen showing a wrong-looking name. Run the thing before calling a screen done.
+
+**[`docs/load-intake.md`](./docs/load-intake.md) is the walkthrough**: annotated screenshots of every intake screen, paste-ready sample documents to reproduce each one, and what the module cannot do yet. Read it before changing an intake screen — it is also the fastest way to hand the module to someone else. (The same screenshots are in the agent wiki's project note; the repo copy is canonical.)
+
+**Signing in locally without the email.** Verifying a gated screen needs a session, and the magic link goes to an inbox. Drive the real callback instead: Auth.js stores `sha256(rawToken + AUTH_SECRET)` in `verification_tokens`, so insert a row with that hash and open `/api/auth/callback/resend?token=<raw>&email=<addr>&callbackUrl=<path>` — the server sets the session cookie itself. Single-use, and it exercises real auth rather than faking it. Injecting a cookie directly does not work; browser automation blocks cookie writes.
 
 **Carrier vetting is implemented end to end.** Sign in, enter an MC or USDOT number, get a pass/warn/fail verdict with reasons, and a stored snapshot. `/carriers` lists every carrier with its current verdict; `/carriers/[id]` shows the latest check, the derived facts, and the full history.
 
@@ -177,30 +207,50 @@ A re-check reports whether the payload moved (`changed`), by comparing the conte
 
 **Layout.**
 
-- `src/domain/` — framework-free. Money, time windows, carrier facts, verdicts, the vetting use case, `details` schemas, ports (`CarrierLookup`, `DocumentStore`, `Extractor`, repositories)
+- `src/domain/` — framework-free. Money, time windows, carrier facts, verdicts, the vetting use case, `details` schemas, ports (`CarrierLookup`, `DocumentStore`, `TextExtractor`/`StructureParser`, repositories)
+- `src/domain/intake/` — the whole intake brain: `document-text` (line and column assembly, scan detection), `plain-text` (the pasted-email stage, in the domain because it is pure string handling with no vendor), `parse-values`, `label-parser`, `load-draft`, `pipeline`, `confirm`, `provenance`, `fingerprint`
+- `src/domain/load/` — load/stop/party shapes plus the status, equipment and stop-type vocabularies. These moved out of the Drizzle schema so a parser can classify equipment without the database on its import path; the schema reads them from here and re-exports them
 - `src/db/` — Drizzle schema, client, repository implementations
-- `src/integrations/` — outbound vendor adapters. `fmcsa/` implements `CarrierLookup`: a permissive zod schema, the payload→facts mapper, and the HTTP client
+- `src/integrations/` — outbound vendor adapters. `fmcsa/` implements `CarrierLookup`: a permissive zod schema, the payload→facts mapper, and the HTTP client. `pdf/` implements `TextExtractor` over `unpdf`
+- `src/tools/inspect-document.ts` — the corpus inspector (`npm run intake:inspect`). Not production code
 - `src/env/` — zod-parsed env, split by concern so a migration doesn't require an email provider key
 - `src/server/tenant.ts` — the only place a `BrokerageScope` is created from a session. `resolveSession()` returns three states, not two: signed out, **signed in with no brokerage**, and ready. The middle one needs its own screen — folding it into "signed out" bounces the user to `/signin`, which redirects signed-in users back, forever. Wrapped in React `cache` so the layout and the page beneath it share one session read
+- `src/server/intake.ts` — composition root for intake. Extractor order is the routing rule: each declares what it `supports`, first match wins
 - `src/server/carriers.ts` — composition root for vetting. Deliberately **not** `server-only`: nothing in it touches a request, and Phase 3's scheduled re-checks are a plain Node process that needs exactly this module. `server-only` belongs on modules that read a session
 - `src/test/` — transaction-rollback harness and global migration setup
 
-**Getting started.** Copy `.env.example` to `.env.local`, then `npm run db:up && npm run db:migrate && npm test`. Carrier lookups additionally need `FMCSA_WEB_KEY`; without it the vetting screen renders a setup notice instead of failing. `FMCSA_BASE_URL` points the client at a stub to exercise the flow without a key.
+**Getting started.** Copy `.env.example` to `.env.local`, then `npm run db:up && npm run db:migrate && npm test`. Carrier lookups additionally need `FMCSA_WEB_KEY`; without it the vetting screen renders a setup notice instead of failing. `FMCSA_BASE_URL` points the client at a stub to exercise the flow without a key. Load intake needs nothing beyond the database — no key, no network.
+
+**Trying load intake.** [`docs/load-intake.md`](./docs/load-intake.md) walks the whole flow with screenshots and paste-ready documents.
+
+**Looking at a document.** `npm run intake:inspect -- fixtures/intake/synthetic-rate-con.pdf`. Add `--items` for every positioned item and the plain text, `--quiet` for just the fingerprint and the draft. Pass several files to get a layout cluster report. `.txt`/`.eml` files are read as pasted text, which is how an email joins the corpus.
 
 **Deployed.** https://freight-broker-toolkit.vercel.app, on Neon Postgres provisioned through the Vercel marketplace; the schema is migrated there. The repo is connected, so pushes deploy automatically — `main` to production, branches to previews. Note that `AUTH_RESEND_KEY` and `AUTH_EMAIL_FROM` have to be set in the Vercel environment as well as `.env.local`; a key that only exists locally will not make deployed sign-in work.
 
 ### Deliberately not built yet
 
-- Repositories for `Load`, `Party`, `Stop`, `Document` — the tables exist; access patterns should be designed against a real module, not guessed
-- The PDF renderer and every extractor — ports exist, implementations do not. The `Extractor` port needs reshaping before the intake pipeline is built (see "Known constraints on the intake pipeline")
-- A `DocumentStore` implementation (the local-filesystem adapter lands with doc generation)
+- A `Document` repository — that table exists, but its access patterns belong to document generation. `Load` and `Party` repositories are built; intake was the real module they were waiting for
+- The PDF renderer and a `DocumentStore` implementation (both land with doc generation)
+- **OCR.** `pageNeedsOcr` detects a scan and the pipeline returns `needs_ocr`, which the screen explains. The path itself needs a job queue — see the constraints above
+- **Per-layout templates.** The generic label-proximity parser is the baseline; templates should be built where they measurably beat it on real documents, which needs real documents
+- **Editing or deleting a saved load.** `LoadRepository` is create-and-read. A wrong field after confirmation means re-importing under a new number, which is honest but not pleasant; add update when a screen needs it
+- **Per-stop timezones.** A stop stores the facility's zone when the `Party` has one, and new parties get `null` — the document never states a zone and inferring one from the state would be the exact guess the time-window model exists to avoid. The screen says "local time at the dock". Setting a zone per facility is the fix, and it needs a facilities screen
 - **Refreshing a carrier's name or address on re-vet.** `vetCarrier` sets `details` when it creates a carrier and never updates it, because `CarrierRepository` has no update method. Stale rather than wrong — the raw payload on every check has the current values. Add the method when a screen needs it
 - Searching a carrier by name (the QCMobile `/carriers/name/:name` endpoint). Brokers vet by number; add this only if discovery says otherwise
 
 ### Next session
 
-**Load intake, steps 1–3** of the build order above: the text stage, the review screen, and the corpus inspector. Step 4 waits for real documents.
+**Point the inspector at real documents.** The code is no longer the constraint; the corpus is. `npm run intake:inspect -- <file...>` reports, per document, what the text stage saw, the layout fingerprint, what the parser extracted and which fields it flagged — and across several documents, how the layouts cluster. Three or four brokers' worth of rate cons turns every open question in this file into an answer:
 
-This runs in parallel with discovery rather than after it — see `docs/discovery.md`. There is no client yet and no former-colleague network to draw on, so sample rate cons come from cold outreach and public sources. The corpus inspector exists so that whatever arrives can be turned into an answer immediately.
+- How much of a real corpus is scans, which decides whether OCR is a rare path or the main one.
+- Whether layouts cluster by TMS vendor or by shipper — run the inspector over the lot and read the cluster report.
+- Where the generic parser actually fails, which is the only honest basis for writing a template.
+- Whether the confidence scale is calibrated: `details.intake.corrections` accumulates cases where the parser was confident and wrong.
 
-Do not start document generation — it consumes a load record, and load intake defines what that record actually contains.
+Add each document to `/fixtures/intake/` anonymized, with its provenance, and expect the first few to break things.
+
+This runs in parallel with discovery rather than after it — see `docs/discovery.md`. There is no client yet and no former-colleague network to draw on, so sample rate cons come from cold outreach and public sources.
+
+**Then document generation**, which is now unblocked: load intake has defined what a load record contains.
+
+**One known wart in the fixtures**, worth fixing before the corpus grows: `synthetic-rate-con.txt` pairs the invented carrier "GULF COAST HAULING LLC" with **MC-133655 / DOT-264184, which are Schneider National's real numbers** — they were used to probe the live QCMobile API and then copied into the fixture. It contradicts "fixtures are synthetic carriers", and in a dev database that has vetted the real MC it makes the fixture load link to Schneider, which is confusing. (It is also what surfaced the name-mismatch warning, so it earned its keep once.) Changing it means regenerating the PDF and updating four test files.

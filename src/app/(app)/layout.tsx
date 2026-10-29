@@ -68,9 +68,21 @@ function AppHeader({
 }) {
   return (
     <header className={styles.appBar}>
-      <Link href="/carriers" className={styles.brand}>
+      <Link href="/loads" className={styles.brand}>
         Freight Broker Toolkit
       </Link>
+
+      {/* Two modules now, so the app bar has to be able to get between them.
+          Not marked active: `usePathname` would make this a client component
+          for a visual nicety, and it renders on every page. */}
+      <nav className={styles.nav}>
+        <Link href="/loads" className={styles.navLink}>
+          Loads
+        </Link>
+        <Link href="/carriers" className={styles.navLink}>
+          Carriers
+        </Link>
+      </nav>
 
       <div className={styles.appBarRight}>
         <span className={styles.identity}>

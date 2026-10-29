@@ -15,7 +15,7 @@ export const metadata = {
   title: "Carrier vetting",
 };
 
-export default function CarriersPage() {
+export default function CarriersPage({ searchParams }: PageProps<"/carriers">) {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
@@ -28,7 +28,7 @@ export default function CarriersPage() {
       </header>
 
       <Suspense fallback={<div className={styles.skeleton} />}>
-        <Workspace />
+        <Workspace searchParams={searchParams} />
       </Suspense>
 
       <DataLimitsNote />
@@ -36,10 +36,19 @@ export default function CarriersPage() {
   );
 }
 
-async function Workspace() {
+async function Workspace({
+  searchParams,
+}: {
+  searchParams: PageProps<"/carriers">["searchParams"];
+}) {
   // The route group's layout has already guaranteed a brokerage; this throws
   // rather than renders if that guard was somehow bypassed.
   const scope = await requireBrokerage();
+
+  // A number carried over from a load draft, so vetting is one click from the
+  // review screen. Nothing is run automatically: the broker still presses the
+  // button, because a lookup is a recorded event in the audit trail.
+  const { kind, number } = await searchParams;
 
   const carriers = await carrierRepository.list(scope);
   const latest = await carrierCheckRepository.latestForEach(
@@ -57,7 +66,11 @@ async function Workspace() {
         </p>
       )}
 
-      <VetForm disabled={!isCarrierLookupConfigured} />
+      <VetForm
+        disabled={!isCarrierLookupConfigured}
+        defaultKind={kind === "dot" ? "dot" : "mc"}
+        defaultNumber={typeof number === "string" ? number.replace(/\D/g, "") : ""}
+      />
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Carriers</h2>
