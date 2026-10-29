@@ -1,36 +1,70 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Freight Broker Toolkit
 
-## Getting Started
+Automation tools for small and mid-size freight brokers, starting in Houston. Three modules, each usable on its own: **carrier vetting**, **load intake**, and **document generation**.
 
-First, run the development server:
+Status: pre-validation. The foundation is built; no module is implemented yet. See [CLAUDE.md](./CLAUDE.md) for scope, roadmap, and the reasoning behind the design decisions.
+
+## Getting started
+
+Requires Node 24+ and Docker.
 
 ```bash
+cp .env.example .env.local   # fill in AUTH_SECRET with `npx auth secret`
+npm install
+npm run db:up                # Postgres 17 in Docker, with a separate test database
+npm run db:migrate
+npm test
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Scripts
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Script                | What it does                                                 |
+| --------------------- | ------------------------------------------------------------ |
+| `npm run dev`         | Next.js dev server                                           |
+| `npm run build`       | Production build                                             |
+| `npm test`            | Vitest — domain tests plus repository tests against Postgres |
+| `npm run typecheck`   | `tsc --noEmit`                                               |
+| `npm run lint`        | ESLint, including the `src/domain` boundary rule             |
+| `npm run format`      | Prettier                                                     |
+| `npm run db:up`       | Start the local Postgres container                           |
+| `npm run db:generate` | Generate a migration from schema changes                     |
+| `npm run db:migrate`  | Apply committed migrations                                   |
+| `npm run db:studio`   | Drizzle Studio                                               |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Layout
 
-## Learn More
+```
+src/domain/   Framework-free business logic: money, time windows,
+              carrier facts and verdicts, ports (DocumentStore, Extractor,
+              repositories). Enforced by lint — no Next, React, Drizzle, or Auth.js.
+src/db/       Drizzle schema, client, repository implementations.
+src/env/      zod-parsed environment, split by concern.
+src/server/   Request-scoped server helpers (tenant resolution).
+src/app/      Routes and UI.
+src/test/     Transaction-rollback harness and migration setup.
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Deployment
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Production: **https://freight-broker-toolkit.vercel.app** (Vercel project `freight-broker-toolkit`, Neon Postgres provisioned through the Vercel marketplace).
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Deploy with `npx vercel deploy --prod`. Apply migrations to a deployed database by passing its connection string directly:
 
-## Deploy on Vercel
+```bash
+npx tsx src/db/migrate.ts "postgresql://..."
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Two things are not wired up yet and need a browser:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. **Auto-deploy on push.** `vercel git connect` fails until the Vercel GitHub App is authorized for the `Bayou-City-Labs` org. Until then, production deploys are manual.
+2. **Magic-link email.** `AUTH_RESEND_KEY` is a placeholder, so sign-in emails will not send. Replace it with a real key and set `AUTH_EMAIL_FROM` to an address on a Resend-verified domain.
+
+## Conventions
+
+- **Money is integer cents.** Use `Money` from `src/domain/money.ts`; never store a dollar float.
+- **Every repository call takes a `BrokerageScope`.** This is how tenant isolation is guaranteed — it cannot be forgotten, because it cannot be omitted.
+- **Stop windows are local wall time + an IANA zone + the raw source text.** Absolute instants are derived, never stored.
+- **Uncertain fields go in the zod-validated `details` jsonb column**, and get promoted to real columns once something queries them.
+- **Migrations are generated and committed**, never pushed from the schema.
+- Branches are named `feat/...`, `fix/...`, `chore/...`.

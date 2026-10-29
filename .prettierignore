@@ -1,0 +1,8 @@
+.next
+node_modules
+drizzle
+coverage
+package-lock.json
+.agents
+.claude
+skills-lock.json

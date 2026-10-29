@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    # Tests run against real Postgres, not a mock or an in-memory substitute,
+    # so constraints and tenancy scoping are genuinely exercised in CI.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: freight_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/freight_test
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/freight_test
+      # Build-time placeholders. Real values live in the deployment environment;
+      # these exist only so env parsing succeeds during `next build`.
+      AUTH_SECRET: ci-placeholder-secret-value-0000000000
+      AUTH_RESEND_KEY: ci-placeholder
+      AUTH_EMAIL_FROM: ci@example.com
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Applies committed migrations, then runs the suite. A schema change that
+      # was generated but never committed fails here rather than in production.
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
