@@ -1,0 +1,324 @@
+.page {
+  width: 100%;
+  max-width: 56rem;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.title {
+  font-size: 1.75rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.subtitle {
+  color: var(--muted);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  max-width: 44rem;
+}
+
+/* --- Lookup form ------------------------------------------------------- */
+
+.form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+  padding: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  flex: 1 1 14rem;
+}
+
+.label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.input,
+.select {
+  font: inherit;
+  font-size: 0.9375rem;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--background);
+  color: var(--foreground);
+  min-width: 0;
+}
+
+.select {
+  flex: 0 0 9rem;
+}
+
+.input:focus-visible,
+.select:focus-visible,
+.button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.button {
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 550;
+  padding: 0.5rem 1.125rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--foreground);
+  color: var(--background);
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+.formError {
+  flex-basis: 100%;
+  font-size: 0.875rem;
+  color: var(--fail-fg);
+}
+
+/* --- Verdict ----------------------------------------------------------- */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.1875rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+
+.pass {
+  color: var(--pass-fg);
+  background: var(--pass-bg);
+}
+
+.warn {
+  color: var(--warn-fg);
+  background: var(--warn-bg);
+}
+
+.fail {
+  color: var(--fail-fg);
+  background: var(--fail-bg);
+}
+
+.unchecked {
+  color: var(--muted);
+  background: transparent;
+}
+
+/* --- Lists and cards --------------------------------------------------- */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.sectionTitle {
+  font-size: 1rem;
+  font-weight: 620;
+}
+
+.list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.875rem 1.125rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.rowMain {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1875rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.rowName {
+  font-weight: 560;
+  overflow-wrap: anywhere;
+}
+
+.rowMeta {
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.reasons {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.reason {
+  display: flex;
+  align-items: baseline;
+  gap: 0.625rem;
+  font-size: 0.9375rem;
+  line-height: 1.45;
+}
+
+.reasonDot {
+  flex: 0 0 auto;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  transform: translateY(-0.0625rem);
+}
+
+.dotPass {
+  background: var(--pass-fg);
+}
+
+.dotWarn {
+  background: var(--warn-fg);
+}
+
+.dotFail {
+  background: var(--fail-fg);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.875rem 1.25rem;
+  margin: 0;
+}
+
+.factTerm {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.1875rem;
+}
+
+.factValue {
+  font-size: 0.9375rem;
+}
+
+/* --- Notes and empty states -------------------------------------------- */
+
+.note {
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--muted);
+  border-left: 2px solid var(--border);
+  padding-left: 0.875rem;
+}
+
+.note strong {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.callout {
+  border: 1px solid var(--warn-fg);
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+  border-radius: 8px;
+  padding: 0.875rem 1.125rem;
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+.callout code {
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 0.8125em;
+}
+
+.empty {
+  padding: 1.75rem 1.125rem;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.9375rem;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+
+.skeleton {
+  height: 4rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.backLink {
+  font-size: 0.875rem;
+  color: var(--muted);
+  width: fit-content;
+}
+
+.timestamp {
+  font-variant-numeric: tabular-nums;
+}

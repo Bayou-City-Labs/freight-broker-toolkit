@@ -2,7 +2,7 @@
 
 Automation tools for small and mid-size freight brokers, starting in Houston. Three modules, each usable on its own: **carrier vetting**, **load intake**, and **document generation**.
 
-Status: pre-validation. The foundation is built; no module is implemented yet. See [CLAUDE.md](./CLAUDE.md) for scope, roadmap, and the reasoning behind the design decisions.
+Status: pre-validation. **Carrier vetting is built**; the other two modules are not. See [CLAUDE.md](./CLAUDE.md) for scope, roadmap, and the reasoning behind the design decisions.
 
 ## Getting started
 
@@ -36,15 +36,50 @@ npm run dev
 ## Layout
 
 ```
-src/domain/   Framework-free business logic: money, time windows,
-              carrier facts and verdicts, ports (DocumentStore, Extractor,
-              repositories). Enforced by lint — no Next, React, Drizzle, or Auth.js.
-src/db/       Drizzle schema, client, repository implementations.
-src/env/      zod-parsed environment, split by concern.
-src/server/   Request-scoped server helpers (tenant resolution).
-src/app/      Routes and UI.
-src/test/     Transaction-rollback harness and migration setup.
+src/domain/       Framework-free business logic: money, time windows, carrier
+                  facts, verdicts, the vetting use case, and ports (CarrierLookup,
+                  DocumentStore, Extractor, repositories). Enforced by lint — no
+                  Next, React, Drizzle, or Auth.js.
+src/db/           Drizzle schema, client, repository implementations.
+src/integrations/ Outbound vendor adapters. fmcsa/ implements CarrierLookup.
+src/env/          zod-parsed environment, split by concern.
+src/server/       Composition roots and request-scoped helpers.
+src/app/          Routes and UI.
+src/test/         Transaction-rollback harness and migration setup.
 ```
+
+Dependencies point inward. `src/domain` knows about ports; everything else
+implements them. That is what makes `vetCarrier` testable with in-memory fakes
+and keeps the door open to lifting the domain into a shared package.
+
+## Carrier vetting
+
+Look up a carrier by MC or USDOT number against FMCSA's public QCMobile API,
+derive a pass/warn/fail verdict, and store a timestamped snapshot.
+
+Set `FMCSA_WEB_KEY` to enable it — register an application at
+[mobile.fmcsa.dot.gov](https://mobile.fmcsa.dot.gov/QCDevsite/docs/getStarted)
+with a login.gov account. Without a key the screen renders a setup notice
+rather than failing a lookup it cannot make.
+
+### Things the API does that will bite you
+
+- **A rejected key comes back as HTTP 404**, with `content` as a plain string
+  (`{"content": "Webkey not found"}`), which is indistinguishable by status
+  from an unknown carrier. The client reads the body before trusting the
+  status, because telling a broker "no such carrier" when we simply failed to
+  authenticate is the worst available outcome.
+- **The published field list disagrees with the wire format** — the docs name
+  `allowToOperate` and `outOfService`; the API sends `allowedToOperate` and
+  `oosDate`. Numbers arrive as either JSON numbers or strings. The schema in
+  `src/integrations/fmcsa/schema.ts` is deliberately permissive as a result:
+  unknown values degrade to "unknown" instead of throwing, and the raw payload
+  is stored whole regardless.
+- **The docket-number endpoint may return `content` as an array**, where the
+  DOT endpoint returns an object. Both are handled.
+
+To exercise the flow without a real key, point `FMCSA_BASE_URL` at a stub that
+serves a QCMobile-shaped response.
 
 ### Getting a tenant
 

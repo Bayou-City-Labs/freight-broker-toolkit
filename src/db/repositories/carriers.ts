@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Carrier, CarrierCheck } from "@/domain/carrier/carrier";
 import { newId } from "@/domain/ids";
 import { snapshotHash } from "@/domain/carrier/snapshot";
@@ -160,6 +160,25 @@ export function createCarrierCheckRepository(
         .orderBy(desc(carrierChecks.checkedAt))
         .limit(1);
       return row ? toCarrierCheck(row) : null;
+    },
+
+    async latestForEach(scope, carrierIds) {
+      if (carrierIds.length === 0) return new Map();
+
+      // DISTINCT ON keeps this to one round trip: Postgres orders within each
+      // carrier and hands back only the newest row per id.
+      const rows = await executor
+        .selectDistinctOn([carrierChecks.carrierId])
+        .from(carrierChecks)
+        .where(
+          and(
+            eq(carrierChecks.brokerageId, scope.brokerageId),
+            inArray(carrierChecks.carrierId, [...carrierIds]),
+          ),
+        )
+        .orderBy(carrierChecks.carrierId, desc(carrierChecks.checkedAt));
+
+      return new Map(rows.map((row) => [row.carrierId, toCarrierCheck(row)]));
     },
 
     async historyFor(scope, carrierId, limit = 50) {
