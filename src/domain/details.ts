@@ -50,9 +50,37 @@ export const intakeProvenanceSchema = z
   })
   .loose();
 
+/**
+ * What one save of the edit screen changed.
+ *
+ * A sibling of `intake`, never part of it. `intake.corrections` is evidence
+ * about the *parser*, captured at the one moment a human overruled it; an edit
+ * made three days later is a different fact, and folding it in would corrupt
+ * the only data the confidence scale can be calibrated from.
+ *
+ * `from` and `to` are strings rather than a `number | string | null` union
+ * because this trail is read by a person on a screen and never computed on.
+ * Formatting at write time means the renderer does not have to know a path's
+ * type. The columns still hold current truth; nothing is derived from here.
+ */
+export const loadEditChangeSchema = z.object({
+  /** Dotted path, matching the correction paths: "carrierPayCents", "stops.1.city". */
+  path: z.string(),
+  from: z.string().nullable(),
+  to: z.string().nullable(),
+});
+
+export const loadEditSchema = z.object({
+  /** ISO instant. */
+  at: z.string().min(1),
+  changes: z.array(loadEditChangeSchema),
+});
+
 export const loadDetailsSchema = z
   .object({
     intake: intakeProvenanceSchema.optional(),
+    /** Newest last. Appended by the edit use case; never rewritten. */
+    edits: z.array(loadEditSchema).optional(),
     /** The equipment phrase the document used, before classification. */
     equipmentAsWritten: z.string().optional(),
     /** The carrier name as the document wrote it, which may not match a record. */
@@ -106,6 +134,8 @@ export const documentDetailsSchema = z
 
 export type FieldCorrection = z.infer<typeof fieldCorrectionSchema>;
 export type IntakeProvenance = z.infer<typeof intakeProvenanceSchema>;
+export type LoadEditChange = z.infer<typeof loadEditChangeSchema>;
+export type LoadEdit = z.infer<typeof loadEditSchema>;
 export type LoadDetails = z.infer<typeof loadDetailsSchema>;
 export type StopDetails = z.infer<typeof stopDetailsSchema>;
 export type PartyDetails = z.infer<typeof partyDetailsSchema>;
