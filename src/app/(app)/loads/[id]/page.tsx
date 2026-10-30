@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import type { IntakeProvenance, LoadEdit } from "@/domain/details";
+import type { IntakeProvenance } from "@/domain/details";
 import { carrierNameMatches } from "@/domain/load/carrier-name";
 import type { Party, Stop } from "@/domain/load/load";
 import { carrierRepository } from "@/server/carriers";
@@ -9,6 +9,7 @@ import { loadRepository, partyRepository } from "@/server/intake";
 import { requireBrokerage } from "@/server/tenant";
 import styles from "../../../ui.module.css";
 import {
+  EditNote,
   formatEquipment,
   formatMoney,
   formatWeight,
@@ -245,55 +246,3 @@ function IntakeNote({ provenance }: { provenance: IntakeProvenance }) {
   );
 }
 
-/**
- * What has changed since this load was saved.
- *
- * On the screen rather than only in the column, for the same reason the intake
- * note is: a rate con is an agreement, and "the carrier pay says $1,850 — did
- * it always?" is a question someone eventually asks. Newest first, since the
- * usual question is about the last change — but every save is shown, because
- * nobody has yet seen a load with enough edits to need collapsing. Revisit
- * when one does.
- */
-function EditNote({ edits }: { edits: readonly LoadEdit[] }) {
-  const newest = [...edits].reverse();
-
-  return (
-    <div className={styles.note}>
-      <strong>
-        Edited {edits.length === 1 ? "once" : `${edits.length} times`} since it was saved.
-      </strong>
-      <ul className={styles.list}>
-        {newest.map((edit, index) => (
-          <li key={`${edit.at}-${index}`} className={styles.row}>
-            <div className={styles.rowMain}>
-              <span className={styles.rowName}>{formatEditedAt(edit.at)}</span>
-              <span className={styles.rowMeta}>
-                {edit.changes.length === 0
-                  ? "No fields changed."
-                  : edit.changes
-                      .map(
-                        (change) =>
-                          `${change.path}: ${change.from ?? "—"} → ${change.to ?? "—"}`,
-                      )
-                      .join(" · ")}
-              </span>
-            </div>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-/** The instant an edit was made, in the reader's own zone — unlike a dock window. */
-function formatEditedAt(at: string): string {
-  const parsed = new Date(at);
-  if (Number.isNaN(parsed.getTime())) return at;
-  return parsed.toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}

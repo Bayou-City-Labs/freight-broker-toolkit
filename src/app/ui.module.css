@@ -519,6 +519,18 @@
   overflow-wrap: anywhere;
 }
 
+/*
+  The changes inside one edit-trail entry: one per line. Nested inside a .list
+  row, so it carries no border or background of its own.
+*/
+.changeList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  overflow-wrap: anywhere;
+}
+
 .stopCard {
   display: flex;
   flex-direction: column;
