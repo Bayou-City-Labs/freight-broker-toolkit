@@ -1,0 +1,270 @@
+import { describe, expect, it } from "vitest";
+import type { DbExecutor } from "@/db/client";
+import { createCarrierRepository } from "@/db/repositories/carriers";
+import { createLoadRepository } from "@/db/repositories/loads";
+import { createPartyRepository } from "@/db/repositories/parties";
+import { createConfirmDraft, type ConfirmedLoad } from "@/domain/intake/confirm";
+import { createUpdateLoad } from "@/domain/load/update";
+import type { BrokerageScope } from "@/domain/tenancy";
+import { seedBrokerage, withRollback } from "@/test/db";
+import { readEditedLoad } from "./form-values";
+
+/**
+ * Intake a load, then edit it, through the real form boundary and into real
+ * Postgres. The only substitution is the database executor, so the test can
+ * roll back.
+ */
+const RATE_CON = {
+  referenceNumber: "884213",
+  carrierName: "GULF COAST HAULING LLC",
+  carrierMcNumber: "987654",
+  commodity: "Canned goods",
+  weightLbs: "42000",
+  equipment: "53' Dry Van",
+  carrierRateCents: "1850.00",
+};
+
+function wire(tx: DbExecutor) {
+  const loads = createLoadRepository(tx);
+  const parties = createPartyRepository(tx);
+  const carriers = createCarrierRepository(tx);
+
+  return {
+    loads,
+    parties,
+    confirm: createConfirmDraft({ loads, parties, carriers }),
+    update: createUpdateLoad({ loads, parties, carriers }),
+  };
+}
+
+/**
+ * The load this test edits, as intake saved it.
+ *
+ * Built as a `ConfirmedLoad` rather than pushed through `readConfirmedLoad`: a
+ * hand-written `draft` field would have to satisfy `loadDraftSchema` to get
+ * past the form reader, which makes the fixture fragile and tests the intake
+ * boundary all over again. `intake-flow.test.ts` already covers that side from
+ * a real PDF. What is under test here is the edit path.
+ */
+function confirmedLoad(): ConfirmedLoad {
+  return {
+    referenceNumber: "884213",
+    carrierName: "GULF COAST HAULING LLC",
+    carrierMcNumber: "987654",
+    carrierDotNumber: null,
+    commodity: "Canned goods",
+    weightLbs: 42000,
+    equipment: "53' Dry Van",
+    carrierRateCents: 185_000,
+    stops: [
+      {
+        kind: "pickup",
+        partyName: "ACME DISTRIBUTION",
+        addressLine: "4400 Navigation Blvd",
+        city: "Houston",
+        state: "TX",
+        postalCode: "77011",
+        date: "2026-11-02",
+        windowStart: "08:00",
+        windowEnd: "12:00",
+        referenceNumber: "PU-4471",
+        windowRawText: "PU 11/02 0800-1200",
+      },
+      {
+        kind: "delivery",
+        partyName: "LONE STAR FOODS",
+        addressLine: "900 Industrial Way",
+        city: "Dallas",
+        state: "TX",
+        postalCode: "75201",
+        date: "2026-11-03",
+        windowStart: "14:00",
+        windowEnd: null,
+        referenceNumber: null,
+        windowRawText: "DEL 11/03 1400",
+      },
+    ],
+    provenance: {
+      producedBy: "label-proximity-v1",
+      textSource: "plain-text",
+      filename: null,
+      corrections: [{ path: "weightLbs", confidence: 0.9 }],
+      acceptedFlagged: [],
+    },
+  };
+}
+
+/** The second stop, as the edit form reposts it unchanged. */
+const DELIVERY_ROW: Record<string, string> = {
+  kind: "delivery",
+  partyName: "LONE STAR FOODS",
+  addressLine: "900 Industrial Way",
+  city: "Dallas",
+  state: "TX",
+  postalCode: "75201",
+  date: "2026-11-03",
+  windowStart: "14:00",
+  windowEnd: "",
+  referenceNumber: "",
+  windowRawText: "DEL 11/03 1400",
+};
+
+/** What the edit form posts. `stops` is a list of [id, overrides]. */
+function editForm(
+  stops: readonly (readonly [string | null, Record<string, string>])[],
+  overrides: Record<string, string> = {},
+): FormData {
+  const formData = new FormData();
+  formData.set("loadId", "ignored-by-the-reader");
+  for (const [key, value] of Object.entries({ ...RATE_CON, ...overrides })) {
+    formData.set(key, value);
+  }
+  formData.set("carrierDotNumber", "");
+
+  for (const [id, fields] of stops) {
+    const row: Record<string, string> = {
+      kind: "pickup",
+      partyName: "ACME DISTRIBUTION",
+      addressLine: "4400 Navigation Blvd",
+      city: "Houston",
+      state: "TX",
+      postalCode: "77011",
+      date: "2026-11-02",
+      windowStart: "08:00",
+      windowEnd: "12:00",
+      referenceNumber: "PU-4471",
+      windowRawText: "PU 11/02 0800-1200",
+      ...fields,
+    };
+    formData.append("stop.id", id ?? "");
+    for (const [key, value] of Object.entries(row)) {
+      formData.append(`stop.${key}`, value);
+    }
+  }
+
+  return formData;
+}
+
+async function savedLoad(tx: DbExecutor, scope: BrokerageScope) {
+  const outcome = await wire(tx).confirm(scope, confirmedLoad());
+  if (outcome.status !== "saved") throw new Error(`expected a save, got ${outcome.status}`);
+  return outcome;
+}
+
+describe("editing a load, end to end", () => {
+  it("rewrites the load and records what changed", async () => {
+    await withRollback(async (tx) => {
+      const scope = await seedBrokerage(tx);
+      const saved = await savedLoad(tx, scope);
+      const { update, loads } = wire(tx);
+
+      const read = readEditedLoad(
+        editForm(
+          [
+            [saved.stops[0].id, {}],
+            [saved.stops[1].id, DELIVERY_ROW],
+          ],
+          { carrierRateCents: "1900.00", commodity: "Frozen poultry" },
+        ),
+      );
+      if (!read.ok) throw new Error(read.message);
+
+      const outcome = await update(scope, saved.load.id, read.edited);
+      expect(outcome.status).toBe("saved");
+
+      const found = await loads.findById(scope, saved.load.id);
+      expect(found?.load.carrierPayCents).toBe(190_000);
+      expect(found?.load.commodityDescription).toBe("Frozen poultry");
+      // Status is not this screen's to change.
+      expect(found?.load.status).toBe("booked");
+      // Stop ids survive an edit.
+      expect(found?.stops.map((stop) => stop.id)).toEqual(
+        saved.stops.map((stop) => stop.id),
+      );
+
+      const trail = found?.load.details.edits;
+      expect(trail).toHaveLength(1);
+      expect(trail?.[0].changes.map((change) => change.path).sort()).toEqual([
+        "carrierPayCents",
+        "commodityDescription",
+      ]);
+      // Evidence about the parser survives an edit made later.
+      expect(found?.load.details.intake?.producedBy).toBe("label-proximity-v1");
+    });
+  });
+
+  it("corrects a facility for every load that uses it", async () => {
+    await withRollback(async (tx) => {
+      const scope = await seedBrokerage(tx);
+      const saved = await savedLoad(tx, scope);
+      const { update, parties } = wire(tx);
+
+      const read = readEditedLoad(
+        editForm([
+          [saved.stops[0].id, { postalCode: "77012" }],
+          [saved.stops[1].id, DELIVERY_ROW],
+        ]),
+      );
+      if (!read.ok) throw new Error(read.message);
+
+      const outcome = await update(scope, saved.load.id, read.edited);
+      if (outcome.status !== "saved") throw new Error("expected a save");
+
+      const acme = await parties.findByName(scope, "ACME DISTRIBUTION");
+      expect(acme?.postalCode).toBe("77012");
+      // Fixed in place, not duplicated.
+      expect(await parties.list(scope)).toHaveLength(2);
+      // The facility's zone is not re-guessed by an edit.
+      expect(acme?.timeZone).toBeNull();
+    });
+  });
+
+  it("drops a stop and renumbers what is left", async () => {
+    await withRollback(async (tx) => {
+      const scope = await seedBrokerage(tx);
+      const saved = await savedLoad(tx, scope);
+      const { update, loads } = wire(tx);
+
+      const read = readEditedLoad(
+        editForm([[saved.stops[1].id, DELIVERY_ROW]]),
+      );
+      if (!read.ok) throw new Error(read.message);
+
+      const outcome = await update(scope, saved.load.id, read.edited);
+      if (outcome.status !== "saved") throw new Error("expected a save");
+
+      const found = await loads.findById(scope, saved.load.id);
+      expect(found?.stops).toHaveLength(1);
+      expect(found?.stops[0].id).toBe(saved.stops[1].id);
+      expect(found?.stops[0].sequence).toBe(0);
+    });
+  });
+
+  it("refuses a load number another load already holds", async () => {
+    await withRollback(async (tx) => {
+      const scope = await seedBrokerage(tx);
+      const saved = await savedLoad(tx, scope);
+      const { update, loads } = wire(tx);
+
+      await loads.create(scope, { referenceNumber: "999999", status: "draft" }, []);
+
+      const read = readEditedLoad(
+        editForm(
+          [
+            [saved.stops[0].id, {}],
+            [saved.stops[1].id, DELIVERY_ROW],
+          ],
+          { referenceNumber: "999999" },
+        ),
+      );
+      if (!read.ok) throw new Error(read.message);
+
+      const outcome = await update(scope, saved.load.id, read.edited);
+      expect(outcome.status).toBe("duplicate_reference");
+
+      // Nothing was written.
+      const found = await loads.findById(scope, saved.load.id);
+      expect(found?.load.referenceNumber).toBe("884213");
+    });
+  });
+});
