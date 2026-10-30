@@ -511,6 +511,59 @@ describe("updateLoad", () => {
     ]);
   });
 
+  it("adds a stop to a route that already has three", async () => {
+    const { update, saved, unchanged } = await given(fakeCarriers(), threeStopRoute());
+    const edit = unchanged();
+
+    const outcome = await update(scope, saved.load.id, {
+      ...edit,
+      stops: [
+        ...edit.stops,
+        {
+          id: null,
+          kind: "delivery",
+          partyName: "EL PASO CROSSDOCK",
+          addressLine: null,
+          city: "El Paso",
+          state: "TX",
+          postalCode: null,
+          date: "2026-11-04",
+          windowStart: "10:00",
+          windowEnd: null,
+          referenceNumber: null,
+          windowRawText: null,
+        },
+      ],
+    });
+    if (outcome.status !== "saved") throw new Error("expected a save");
+
+    // Four stops written, four stops back. The id a new stop gets must not be
+    // one a kept stop already holds, or the write silently lands on that stop
+    // instead — which is what the shared fake used to do once a route was long
+    // enough for its counter to catch up with `create`'s positional ids.
+    expect(outcome.stops).toHaveLength(4);
+    expect(new Set(outcome.stops.map((stop) => stop.id)).size).toBe(4);
+    expect(outcome.stops.map((stop) => stop.sequence)).toEqual([0, 1, 2, 3]);
+  });
+
+  it("records nothing when the form is saved again after a reorder", async () => {
+    const { update, saved, unchanged } = await given();
+    const edit = unchanged();
+    const swapped: EditedLoad = { ...edit, stops: [edit.stops[1], edit.stops[0]] };
+
+    const first = await update(scope, saved.load.id, swapped);
+    if (first.status !== "saved") throw new Error("expected a save");
+    expect(first.load.details.edits).toHaveLength(1);
+
+    // The route is read back in sequence order, so resubmitting the form the
+    // reorder left on screen states exactly what is stored. A read that
+    // returned the old order would pair each stop against the other one and
+    // append a second entry claiming both were rewritten.
+    const second = await update(scope, saved.load.id, swapped);
+    if (second.status !== "saved") throw new Error("expected a save");
+    expect(second.load.details.edits).toHaveLength(1);
+  });
+
   it("removes a stop", async () => {
     const { update, saved, unchanged } = await given();
     const edit = unchanged();

@@ -34,7 +34,7 @@ export function fakeParties(seed: Party[] = []) {
         contactName: input.contactName ?? null,
         contactPhone: input.contactPhone ?? null,
         contactEmail: input.contactEmail ?? null,
-        details: input.details ?? {},
+        details: { ...(input.details ?? {}) },
       };
       rows.push(party);
       return party;
@@ -72,7 +72,7 @@ export function fakeParties(seed: Party[] = []) {
         contactName: input.contactName ?? null,
         contactPhone: input.contactPhone ?? null,
         contactEmail: input.contactEmail ?? null,
-        details: input.details ?? {},
+        details: { ...(input.details ?? {}) },
       };
       rows[index] = updated;
       return updated;
@@ -86,6 +86,16 @@ export function fakeLoads(seed: Load[] = []) {
   const rows = [...seed];
   const stopRows: Stop[] = [];
   let next = seed.length + 1;
+  /**
+   * Stops get their own counter, in a namespace `create` cannot produce.
+   * Minting them from the load counter collided with `create`'s positional
+   * `stop-<load>-<index>` ids as soon as a load had three stops: adding one to
+   * such a route handed the new stop an id a kept stop already held, and the
+   * write loop below silently overwrote that stop. The real repository mints a
+   * fresh uuid, so the red would have been the fake's, pointing at production
+   * code that is correct.
+   */
+  let nextStop = 1;
 
   const repo: LoadRepository = {
     async create(s, input, stops) {
@@ -100,7 +110,7 @@ export function fakeLoads(seed: Load[] = []) {
         customerRateCents: input.customerRateCents ?? null,
         carrierPayCents: input.carrierPayCents ?? null,
         carrierId: input.carrierId ?? null,
-        details: input.details ?? {},
+        details: { ...(input.details ?? {}) },
       };
       rows.push(load);
 
@@ -116,11 +126,14 @@ export function fakeLoads(seed: Load[] = []) {
         timeZone: stop.timeZone ?? null,
         appointmentType: stop.appointmentType ?? null,
         windowRawText: stop.windowRawText ?? null,
-        details: stop.details ?? {},
+        details: { ...(stop.details ?? {}) },
       }));
       stopRows.push(...saved);
 
-      return { load, stops: saved };
+      // `create` honours the caller's sequence and hands the route back in it,
+      // like the real repository — which `loads.test.ts` pins by inserting
+      // stops out of order.
+      return { load, stops: [...saved].sort((a, b) => a.sequence - b.sequence) };
     },
     async update(s, id, input, newStops) {
       const index = rows.findIndex((r) => r.brokerageId === s.brokerageId && r.id === id);
@@ -137,7 +150,7 @@ export function fakeLoads(seed: Load[] = []) {
         customerRateCents: input.customerRateCents ?? null,
         carrierPayCents: input.carrierPayCents ?? null,
         carrierId: input.carrierId ?? null,
-        details: input.details ?? {},
+        details: { ...(input.details ?? {}) },
       };
       rows[index] = load;
 
@@ -151,9 +164,8 @@ export function fakeLoads(seed: Load[] = []) {
       stopRows.push(...remaining);
 
       const saved = newStops.map((stop, index) => {
-        const current = stopRows.find((row) => row.id === stop.id && row.loadId === id);
         return {
-          id: stop.id ?? `stop-${id}-${next++}`,
+          id: stop.id ?? `stop-new-${nextStop++}`,
           brokerageId: s.brokerageId,
           loadId: id,
           sequence: index,
@@ -164,12 +176,19 @@ export function fakeLoads(seed: Load[] = []) {
           timeZone: stop.timeZone ?? null,
           appointmentType: stop.appointmentType ?? null,
           windowRawText: stop.windowRawText ?? null,
-          details: stop.details ?? current?.details ?? {},
+          // Not `?? current?.details`: the real repository writes `{}` for an
+          // omitted details object rather than inheriting the stored one, and a
+          // fake that inherits would make a future caller look safe.
+          details: { ...(stop.details ?? {}) },
         };
       });
 
       for (const stop of saved) {
-        const position = stopRows.findIndex((row) => row.id === stop.id);
+        // Scoped to this load, like the real `where loadId = id`. Unscoped, a
+        // stop id belonging to another load re-parented that load's row.
+        const position = stopRows.findIndex(
+          (row) => row.id === stop.id && row.loadId === id,
+        );
         if (position === -1) stopRows.push(stop);
         else stopRows[position] = stop;
       }
@@ -184,7 +203,17 @@ export function fakeLoads(seed: Load[] = []) {
     async findById(s, id): Promise<LoadWithStops | null> {
       const load = rows.find((r) => r.brokerageId === s.brokerageId && r.id === id);
       if (!load) return null;
-      return { load, stops: stopRows.filter((stop) => stop.loadId === load.id) };
+      return {
+        load,
+        // By sequence, like the real `order by sequence asc`. Array order left
+        // the stops stale after a reorder, and the edit diff pairs before with
+        // after by position among the survivors — so an unsorted read made a
+        // second save after a reorder report every field of both stops as
+        // rewritten, and append a trail entry for a save that changed nothing.
+        stops: stopRows
+          .filter((stop) => stop.loadId === load.id)
+          .sort((a, b) => a.sequence - b.sequence),
+      };
     },
     async findByReferenceNumber(s, referenceNumber) {
       return (
