@@ -62,7 +62,37 @@ function confirmed(overrides: Partial<ConfirmedLoad> = {}): ConfirmedLoad {
   };
 }
 
-async function given(carriers = fakeCarriers()) {
+/**
+ * The same load with a stop in the middle of the route.
+ *
+ * A two-stop fixture cannot tell a positional bug from a correct answer: with
+ * one pickup and one delivery, the stop that leaves is always the last
+ * position too. The middle stop is where the two readings separate.
+ */
+function threeStopRoute(): ConfirmedLoad {
+  const base = confirmed();
+  return confirmed({
+    stops: [
+      base.stops[0],
+      {
+        kind: "pickup",
+        partyName: "BAYTOWN TRANSLOAD",
+        addressLine: "1200 Decker Dr",
+        city: "Baytown",
+        state: "TX",
+        postalCode: "77520",
+        date: "2026-11-02",
+        windowStart: "13:00",
+        windowEnd: "16:00",
+        referenceNumber: null,
+        windowRawText: "PU 11/02 1300-1600",
+      },
+      base.stops[1],
+    ],
+  });
+}
+
+async function given(carriers = fakeCarriers(), fixture: ConfirmedLoad = confirmed()) {
   const parties = fakeParties();
   const loads = fakeLoads();
 
@@ -78,7 +108,7 @@ async function given(carriers = fakeCarriers()) {
     now: () => at,
   });
 
-  const saved = await confirm(scope, confirmed());
+  const saved = await confirm(scope, fixture);
   if (saved.status !== "saved") throw new Error("fixture failed to save");
 
   /** The submission the edit form posts when nothing is changed. */
@@ -91,12 +121,10 @@ async function given(carriers = fakeCarriers()) {
     weightLbs: 42000,
     equipment: "53' Dry Van",
     carrierRateCents: 185_000,
-    stops: saved.stops.map(
-      (stop, index): EditedStop => ({
-        id: stop.id,
-        ...confirmed().stops[index],
-      }),
-    ),
+    stops: saved.stops.map((stop, index): EditedStop => ({
+      id: stop.id,
+      ...fixture.stops[index],
+    })),
   });
 
   return { update, loads, parties, carriers, saved, unchanged };
@@ -419,6 +447,90 @@ describe("updateLoad", () => {
         to: "taken off the route",
       },
     ]);
+  });
+
+  it("names the stop that left the route, not the one that moved up", async () => {
+    const { update, saved, unchanged } = await given(fakeCarriers(), threeStopRoute());
+    const edit = unchanged();
+
+    // Drop the middle stop of a three-stop route — an ordinary edit, not an
+    // exotic one. Positionally the route is simply one shorter, so a diff that
+    // reads the vacated last position reports the *delivery* as taken off
+    // while the truck is still going there.
+    const outcome = await update(scope, saved.load.id, {
+      ...edit,
+      stops: [edit.stops[0], edit.stops[2]],
+    });
+    if (outcome.status !== "saved") throw new Error("expected a save");
+
+    const changes = outcome.load.details.edits?.[0].changes ?? [];
+    expect(changes).toEqual([
+      { path: "stops", from: "3 stops", to: "2 stops" },
+      {
+        path: "stops.1",
+        from: "Pickup — BAYTOWN TRANSLOAD, 2026-11-02 13:00–16:00",
+        to: "taken off the route",
+      },
+    ]);
+    // Said again as the claim itself, because this is the sentence that must
+    // never be written about a stop the load still has.
+    expect(changes).not.toContainEqual(
+      expect.objectContaining({
+        to: "taken off the route",
+        from: expect.stringContaining("LONE STAR FOODS"),
+      }),
+    );
+    // And the surviving stops are not reported as rewritten into each other:
+    // nothing about Lone Star changed except the position it occupies, which
+    // the count and the removal above already say.
+    expect(changes.filter((change) => change.path.startsWith("stops.1."))).toEqual([]);
+  });
+
+  it("names the inserted stop, not the stops it pushed down the route", async () => {
+    const { update, saved, unchanged } = await given();
+    const edit = unchanged();
+
+    // The mirror case: a stop added anywhere but the end. Positionally every
+    // stop after it looks rewritten and the last position looks new, so the
+    // trail would report the existing delivery as having just joined a route
+    // it was always on.
+    const outcome = await update(scope, saved.load.id, {
+      ...edit,
+      stops: [
+        {
+          id: null,
+          kind: "pickup",
+          partyName: "PORT HOUSTON TURNING BASIN",
+          addressLine: null,
+          city: "Houston",
+          state: "TX",
+          postalCode: null,
+          date: "2026-11-01",
+          windowStart: "07:00",
+          windowEnd: "09:00",
+          referenceNumber: null,
+          windowRawText: null,
+        },
+        ...edit.stops,
+      ],
+    });
+    if (outcome.status !== "saved") throw new Error("expected a save");
+
+    const changes = outcome.load.details.edits?.[0].changes ?? [];
+    expect(changes).toEqual([
+      { path: "stops", from: "2 stops", to: "3 stops" },
+      {
+        path: "stops.0",
+        from: "not on the route",
+        to: "Pickup — PORT HOUSTON TURNING BASIN, 2026-11-01 07:00–09:00",
+      },
+    ]);
+    expect(changes).not.toContainEqual(
+      expect.objectContaining({
+        from: "not on the route",
+        to: expect.stringContaining("ACME"),
+      }),
+    );
   });
 
   it("states an added stop with no date or window by what it does have", async () => {

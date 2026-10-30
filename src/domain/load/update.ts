@@ -8,14 +8,7 @@ import type {
   PartyRepository,
 } from "../ports/repositories";
 import type { BrokerageScope } from "../tenancy";
-import type {
-  Load,
-  LoadWithStops,
-  Party,
-  Stop,
-  StopType,
-  StopWrite,
-} from "./load";
+import type { Load, LoadWithStops, Party, Stop, StopType, StopWrite } from "./load";
 import {
   classifyEquipment,
   findCarrier,
@@ -143,10 +136,7 @@ export function createUpdateLoad({
     const edits =
       changes.length === 0
         ? current.load.details.edits
-        : [
-            ...(current.load.details.edits ?? []),
-            { at: now().toISOString(), changes },
-          ];
+        : [...(current.load.details.edits ?? []), { at: now().toISOString(), changes }];
 
     const saved = await loads.update(
       scope,
@@ -316,7 +306,18 @@ interface StatedView {
   readonly weightLbs: number | null;
   readonly equipment: string | null;
   readonly carrierRateCents: number | null;
-  readonly stops: readonly StopValues[];
+  readonly stops: readonly StatedStop[];
+}
+
+/**
+ * A stored stop as the form states it, carrying the row id it came from.
+ *
+ * The id is not a field anyone edits and is never diffed — it is there so the
+ * diff can tell a stop that left the route from a stop that moved down it.
+ * Position cannot answer that; see `diff`.
+ */
+interface StatedStop extends StopValues {
+  readonly id: string;
 }
 
 /**
@@ -348,11 +349,12 @@ async function statedView(
   parties: PartyRepository,
   current: LoadWithStops,
 ): Promise<StatedView> {
-  const stops: StopValues[] = [];
+  const stops: StatedStop[] = [];
 
   for (const stop of current.stops) {
     const party = await parties.findById(scope, stop.partyId);
     stops.push({
+      id: stop.id,
       kind: statedKind(stop.type),
       partyName: party?.name ?? "",
       addressLine: party?.addressLine1 ?? null,
@@ -444,7 +446,11 @@ function statedStop(stop: StopValues): string {
   return when ? `${kind} — ${stop.partyName}, ${when}` : `${kind} — ${stop.partyName}`;
 }
 
-function diff(before: StatedView, after: EditedLoad, link: CarrierLink): LoadEditChange[] {
+function diff(
+  before: StatedView,
+  after: EditedLoad,
+  link: CarrierLink,
+): LoadEditChange[] {
   const changes: LoadEditChange[] = [];
 
   for (const [path, key] of LOAD_PATHS) {
@@ -476,32 +482,68 @@ function diff(before: StatedView, after: EditedLoad, link: CarrierLink): LoadEdi
     });
   }
 
-  // Compared by position, because position is what the route means. A stop
-  // moved from second to first reads as two changed stops, which is what a
-  // person looking at the trail would want to see.
-  const shared = Math.min(before.stops.length, after.stops.length);
+  // Which stops joined and left the route is answered by identity, never by
+  // position. The stored stops carry row ids and a submitted row states the id
+  // it came from, so a stored id absent from the submission is a stop that
+  // genuinely left, and a row stating no id — or an id this load does not hold
+  // — is genuinely new.
+  //
+  // Position cannot answer it, and answering it by position was wrong in the
+  // ordinary case rather than an exotic one. Delete the middle stop of
+  // `[A, B, C]` and the route is one shorter, so a positional rule reports the
+  // now-vacant third position as `C … → taken off the route` while C is still
+  // being hauled. Insert at the front and it reports a stop already on the
+  // route as having joined it. The positional field-by-field diff below is
+  // allowed to be ambiguous about a move; "taken off the route" is a strictly
+  // stronger claim and it has to be true.
+  const submittedIds = new Set(
+    after.stops.flatMap((stop) => (stop.id === null ? [] : [stop.id])),
+  );
+  const storedIds = new Set(before.stops.map((stop) => stop.id));
+  const isAdded = (stop: EditedStop) => stop.id === null || !storedIds.has(stop.id);
 
-  // Positions past the shorter route have nothing to compare against, so a
-  // field-by-field diff cannot see them at all: the count entry above was
-  // once the whole record of a stop being added or dropped. For a route
-  // change on a booked load, *which* stop moved is the thing most worth
-  // having written down.
-  for (let index = shared; index < after.stops.length; index += 1) {
+  // Added stops are reported at the position they now occupy, removed ones at
+  // the position they used to — each describing the route the reader is
+  // looking at either side of the save.
+  for (const [index, stop] of after.stops.entries()) {
+    if (!isAdded(stop)) continue;
     changes.push({
       path: `stops.${index}`,
       from: "not on the route",
-      to: statedStop(after.stops[index]),
+      to: statedStop(stop),
     });
   }
-  for (let index = shared; index < before.stops.length; index += 1) {
+  for (const [index, stop] of before.stops.entries()) {
+    if (submittedIds.has(stop.id)) continue;
     changes.push({
       path: `stops.${index}`,
-      from: statedStop(before.stops[index]),
+      from: statedStop(stop),
       to: "taken off the route",
     });
   }
 
-  for (let index = 0; index < shared; index += 1) {
+  // What is left is the stops that exist on both sides, compared field by
+  // field in route order — paired by their position among the survivors, so a
+  // deletion or an insertion elsewhere on the route does not report every
+  // stop after it as rewritten. Still positional, because position is what a
+  // route means: a stop moved from second to first reads as two changed
+  // stops, which is what a person looking at the trail would want to see.
+  //
+  // A path names the stop's position in the saved route, which is the route
+  // the screen reading this trail displays.
+  const kept = before.stops.filter((stop) => submittedIds.has(stop.id));
+  const survived = after.stops
+    .map((stop, index) => ({ stop, index }))
+    .filter((entry) => !isAdded(entry.stop));
+  // Equal lengths unless a submission states one stored id twice, which the
+  // write path tolerates by giving the second row the id and the diff by
+  // leaving the extra out.
+  const shared = Math.min(kept.length, survived.length);
+
+  for (let position = 0; position < shared; position += 1) {
+    const index = survived[position].index;
+    const fromStop = kept[position];
+    const toStop = survived[position].stop;
     for (const key of STOP_PATHS) {
       // A date with no time is not currently storable: a stop's date lives
       // only inside `opensAtLocal`/`closesAtLocal`, and `toNewStop` writes
@@ -511,12 +553,11 @@ function diff(before: StatedView, after: EditedLoad, link: CarrierLink): LoadEdi
       // rather than claiming a save that did not happen — the storage
       // limitation is intake's too, and fixing it is a schema change, not a
       // trail change.
-      const stored =
-        after.stops[index].windowStart !== null || after.stops[index].windowEnd !== null;
+      const stored = toStop.windowStart !== null || toStop.windowEnd !== null;
       if (key === "date" && !stored) continue;
 
-      const from = before.stops[index][key];
-      const to = after.stops[index][key];
+      const from = fromStop[key];
+      const to = toStop[key];
       if (from !== to) {
         changes.push({
           path: `stops.${index}.${key}`,
