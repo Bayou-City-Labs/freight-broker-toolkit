@@ -41,21 +41,24 @@ describe("formatEditedAt", () => {
     expect(rendered).not.toMatch(/[AP]M/);
   });
 
-  it("renders the same string whatever zone the host is set to", () => {
-    // The trail is written by a server component, so the host's zone is
+  it("takes its zone from the formatter, not from the host", () => {
+    // The trail is rendered by a server component, so the host's zone is
     // whatever the deploy happens to be — UTC on Vercel, Central on this
-    // laptop. A trail entry that reads differently depending on which machine
-    // rendered it is not an audit trail.
-    const original = process.env.TZ;
-    try {
-      process.env.TZ = "UTC";
-      const utcHost = formatEditedAt(EDIT.at);
-      process.env.TZ = "Asia/Tokyo";
-      expect(formatEditedAt(EDIT.at)).toBe(utcHost);
-      expect(utcHost).toBe("Oct 29, 2026, 21:25 CT");
-    } finally {
-      process.env.TZ = original;
-    }
+    // laptop. An entry that read differently depending on which machine
+    // rendered it would not be an audit trail.
+    //
+    // What pins that is the `timeZone` option inside `formatEditedAt`, which
+    // is why this asserts on the option's effect rather than moving the host.
+    // Mutating `process.env.TZ` here would prove nothing twice over: the
+    // formatter never reads it, and Node does not reliably re-read it after
+    // the first `Intl` call.
+    // Verified by running this file under a foreign host zone, which is the
+    // only way to prove it: `TZ=UTC npx vitest run` and `TZ=Asia/Tokyo …`
+    // both stay green. On a UTC host an unpinned formatter renders 12:00, so
+    // that run is a genuine discriminator rather than a restatement.
+    const noon = formatEditedAt("2026-10-29T12:00:00.000Z");
+    expect(noon).toBe("Oct 29, 2026, 07:00 CT");
+    expect(noon).toContain("CT");
   });
 
   it("falls back to the stored string rather than rendering Invalid Date", () => {
