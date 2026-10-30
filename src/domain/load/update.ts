@@ -7,7 +7,14 @@ import type {
   PartyRepository,
 } from "../ports/repositories";
 import type { BrokerageScope } from "../tenancy";
-import type { Load, LoadWithStops, Party, Stop, StopWrite } from "./load";
+import type {
+  Load,
+  LoadWithStops,
+  Party,
+  Stop,
+  StopType,
+  StopWrite,
+} from "./load";
 import {
   classifyEquipment,
   findCarrier,
@@ -91,6 +98,14 @@ export function createUpdateLoad({
       const clash = await loads.findByReferenceNumber(scope, edited.referenceNumber);
       // A load is not a duplicate of itself, which is the whole reason this
       // check is not just the one `confirmDraft` makes.
+      //
+      // `clash.id !== loadId` is defensive and currently unreachable: the
+      // enclosing condition already establishes that the submitted number
+      // differs from this load's stored one, so a load found *by* the new
+      // number cannot be this load. Kept because it costs nothing and the day
+      // the enclosing condition is relaxed — a case-insensitive comparison, a
+      // normalized number — it becomes the thing standing between a reviewer
+      // and "this load duplicates itself".
       if (clash && clash.id !== loadId) {
         return { status: "duplicate_reference", existing: clash };
       }
@@ -107,7 +122,7 @@ export function createUpdateLoad({
       const existing = stop.id ? (existingById.get(stop.id) ?? null) : null;
       const party = await resolveParty(scope, parties, stop, existing);
       writes.push({
-        ...toNewStop(stop, index, party, existing?.details ?? {}),
+        ...toNewStop(stated(stop, existing), index, party, carriedDetails(existing)),
         ...(existing ? { id: existing.id } : {}),
       });
     }
@@ -161,6 +176,42 @@ export function createUpdateLoad({
       carrierLinked: carrier !== null,
     };
   };
+}
+
+/**
+ * The submitted stop, with the fields this form has no business restating
+ * taken from the row instead.
+ *
+ * `windowRawText` is what the source document said about timing, kept verbatim
+ * for audit. It is a fact about the document, not about the load, so it is not
+ * on the form, not in the diff — and therefore an erasure would be silent.
+ * Carrying it from the existing row means editing a load can never alter it. A
+ * stop someone added has no row and no document text, so it takes the
+ * submitted value, which is null.
+ */
+function stated(stop: EditedStop, existing: Stop | null): StopValues {
+  if (!existing) return stop;
+  return { ...stop, windowRawText: existing.windowRawText };
+}
+
+/**
+ * The stored stop `details` an edit should inherit.
+ *
+ * `toNewStop` merges existing details so a save does not drop keys this form
+ * never shows — seal numbers, dock hours. But it writes `appointmentNumber`
+ * only when a value was submitted, so inheriting the old one makes a cleared
+ * reference number unclearable: the number stays stored while the diff reports
+ * it gone, on this save and on every save after it.
+ *
+ * Stripped here rather than in `toNewStop`, which intake's confirm path shares
+ * and where there is no previous state to inherit anyway. `appointmentNumber`
+ * is the only key this form owns; everything else is carried.
+ */
+function carriedDetails(existing: Stop | null): Stop["details"] {
+  if (!existing) return {};
+  const carried = { ...existing.details };
+  delete carried.appointmentNumber;
+  return carried;
 }
 
 /**
@@ -224,6 +275,30 @@ interface StatedView {
   readonly stops: readonly StopValues[];
 }
 
+/**
+ * A stored stop type as the form states it.
+ *
+ * Enumerated rather than "anything that is not a delivery is a pickup". The
+ * `StopType` vocabulary also holds `empty_return`, which the form cannot
+ * express, so collapsing it would rewrite such a stop as a pickup on the next
+ * save — and the diff, comparing pickup with pickup, would have nothing to
+ * report. Nothing creates one today; refusing loudly keeps that true on
+ * purpose rather than by luck.
+ */
+function statedKind(type: StopType): StopValues["kind"] {
+  switch (type) {
+    case "pickup":
+      return "pickup";
+    case "delivery":
+      return "delivery";
+    default:
+      throw new Error(
+        `Cannot edit a load with a "${type}" stop: the edit form has no way to ` +
+          `state that type, and saving would silently rewrite it as a pickup.`,
+      );
+  }
+}
+
 async function statedView(
   scope: BrokerageScope,
   parties: PartyRepository,
@@ -234,7 +309,7 @@ async function statedView(
   for (const stop of current.stops) {
     const party = await parties.findById(scope, stop.partyId);
     stops.push({
-      kind: stop.type === "delivery" ? "delivery" : "pickup",
+      kind: statedKind(stop.type),
       partyName: party?.name ?? "",
       addressLine: party?.addressLine1 ?? null,
       city: party?.city ?? null,
@@ -309,6 +384,18 @@ function diff(before: StatedView, after: EditedLoad): LoadEditChange[] {
   const shared = Math.min(before.stops.length, after.stops.length);
   for (let index = 0; index < shared; index += 1) {
     for (const key of STOP_PATHS) {
+      // A date with no time is not currently storable: a stop's date lives
+      // only inside `opensAtLocal`/`closesAtLocal`, and `toNewStop` writes
+      // neither without a time, so the date is discarded by the very save this
+      // diff describes. Reconstructing it then reads back as null and the next
+      // save reports the same change again, forever. The trail stays silent
+      // rather than claiming a save that did not happen — the storage
+      // limitation is intake's too, and fixing it is a schema change, not a
+      // trail change.
+      const stored =
+        after.stops[index].windowStart !== null || after.stops[index].windowEnd !== null;
+      if (key === "date" && !stored) continue;
+
       const from = before.stops[index][key];
       const to = after.stops[index][key];
       if (from !== to) {
@@ -327,11 +414,14 @@ function diff(before: StatedView, after: EditedLoad): LoadEditChange[] {
 /**
  * Formatted at write time, so the screen reading the trail does not have to
  * know what type a path holds.
+ *
+ * `path` is the storage-side name from `LOAD_PATHS`, which is why only
+ * `carrierPayCents` is tested for and not the stated `carrierRateCents`.
  */
 function display(path: string, value: string | number | null): string | null {
   if (value === null) return null;
   if (typeof value === "number") {
-    return path === "carrierPayCents" || path === "carrierRateCents"
+    return path === "carrierPayCents"
       ? `$${Money.fromCents(value).toDollarString()}`
       : String(value);
   }

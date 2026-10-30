@@ -322,11 +322,130 @@ describe("updateLoad", () => {
     ]);
   });
 
-  it("is not a duplicate of itself", async () => {
+  it("saves when the reference number is unchanged", async () => {
     const { update, saved, unchanged } = await given();
 
+    // The clash lookup is skipped entirely in this case, which is the point:
+    // re-saving a load under its own number is not a duplicate.
     const outcome = await update(scope, saved.load.id, unchanged());
     expect(outcome.status).toBe("saved");
+  });
+
+  it("clears a stop's reference number, and reports it exactly once", async () => {
+    const { update, saved, unchanged } = await given();
+    const edit = unchanged();
+    const cleared: EditedLoad = {
+      ...edit,
+      stops: [{ ...edit.stops[0], referenceNumber: null }, edit.stops[1]],
+    };
+
+    const first = await update(scope, saved.load.id, cleared);
+    if (first.status !== "saved") throw new Error("expected a save");
+
+    // The stored value has to actually go, or the trail is describing a save
+    // that did not happen.
+    expect(first.stops[0].details.appointmentNumber).toBeUndefined();
+    expect(first.load.details.edits?.[0].changes).toEqual([
+      { path: "stops.0.referenceNumber", from: "PU-4471", to: null },
+    ]);
+
+    // Re-submitting the same form changes nothing, so the trail must not grow.
+    const second = await update(scope, saved.load.id, cleared);
+    if (second.status !== "saved") throw new Error("expected a save");
+    expect(second.load.details.edits).toHaveLength(1);
+  });
+
+  it("keeps keys on a stop that this form does not show", async () => {
+    const { update, loads, saved, unchanged } = await given();
+    const row = loads.stopRows.find((stop) => stop.id === saved.stops[0].id);
+    if (!row) throw new Error("fixture failed");
+    loads.stopRows[loads.stopRows.indexOf(row)] = {
+      ...row,
+      details: { ...row.details, sealNumber: "SL-99" },
+    };
+
+    const edit = unchanged();
+    const outcome = await update(scope, saved.load.id, {
+      ...edit,
+      stops: [{ ...edit.stops[0], referenceNumber: null }, edit.stops[1]],
+    });
+    if (outcome.status !== "saved") throw new Error("expected a save");
+
+    // Clearing the one key the form owns must not take the others with it.
+    expect(outcome.stops[0].details.sealNumber).toBe("SL-99");
+  });
+
+  it("keeps the document's window text when the form omits it", async () => {
+    const { update, saved, unchanged } = await given();
+    const edit = unchanged();
+
+    const outcome = await update(scope, saved.load.id, {
+      ...edit,
+      stops: [
+        { ...edit.stops[0], windowRawText: null },
+        edit.stops[1],
+        {
+          id: null,
+          kind: "delivery",
+          partyName: "EL PASO CROSSDOCK",
+          addressLine: null,
+          city: "El Paso",
+          state: "TX",
+          postalCode: null,
+          date: "2026-11-04",
+          windowStart: "10:00",
+          windowEnd: null,
+          referenceNumber: null,
+          windowRawText: null,
+        },
+      ],
+    });
+    if (outcome.status !== "saved") throw new Error("expected a save");
+
+    // What the document said is not the reviewer's to retype, and it is not
+    // diffed — so an erasure here would be silent.
+    expect(outcome.stops[0].windowRawText).toBe("PU 11/02 0800-1200");
+    // A stop nobody has saved before has no document text to keep.
+    expect(outcome.stops[2].windowRawText).toBeNull();
+  });
+
+  it("stays silent about a date it cannot store without a time", async () => {
+    const { update, saved, unchanged } = await given();
+    const edit = unchanged();
+    const dateOnly: EditedLoad = {
+      ...edit,
+      stops: [{ ...edit.stops[0], windowStart: null, windowEnd: null }, edit.stops[1]],
+    };
+
+    const first = await update(scope, saved.load.id, dateOnly);
+    if (first.status !== "saved") throw new Error("expected a save");
+
+    // Storage needs a date *and* a time, so the date went nowhere.
+    expect(first.stops[0].opensAtLocal).toBeNull();
+    expect(first.stops[0].closesAtLocal).toBeNull();
+    expect(first.load.details.edits?.[0].changes).toEqual([
+      { path: "stops.0.windowStart", from: "08:00", to: null },
+      { path: "stops.0.windowEnd", from: "12:00", to: null },
+    ]);
+
+    // The date is still on the form and still unstorable. Reporting it as a
+    // change on every subsequent save is the lie this guards against.
+    const second = await update(scope, saved.load.id, dateOnly);
+    if (second.status !== "saved") throw new Error("expected a save");
+    expect(second.load.details.edits).toHaveLength(1);
+  });
+
+  it("refuses to restate a stop type the form cannot express", async () => {
+    const { update, loads, saved, unchanged } = await given();
+    const row = loads.stopRows.find((stop) => stop.id === saved.stops[0].id);
+    if (!row) throw new Error("fixture failed");
+    loads.stopRows[loads.stopRows.indexOf(row)] = { ...row, type: "empty_return" };
+
+    // Nothing creates an empty_return stop today. If something starts to,
+    // editing the load must not quietly turn it into a pickup.
+    await expect(update(scope, saved.load.id, unchanged())).rejects.toThrow(
+      /empty_return/,
+    );
   });
 
   it("refuses a reference number another load already uses", async () => {
