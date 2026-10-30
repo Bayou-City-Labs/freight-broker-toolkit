@@ -1,8 +1,9 @@
 # Load intake: what it looks like, and how to try it
 
-Screenshots of every intake screen, and paste-ready documents to reproduce
-them. Everything here runs locally against synthetic documents — no API key,
-no network, nothing leaves the machine.
+Screenshots of every screen a load passes through — read, review, save, and
+correct afterwards — with paste-ready documents to reproduce them. Everything
+here runs locally against synthetic documents — no API key, no network,
+nothing leaves the machine.
 
 Architecture and the reasoning behind it are in [`../CLAUDE.md`](../CLAUDE.md).
 
@@ -123,7 +124,58 @@ paperwork is a problem they need to see, and the usual cause is importing the
 same rate con twice. The form keeps its values so you can change the number
 and resubmit.
 
-## 5. Looking at documents without the UI
+## 5. Correcting a saved load
+
+A load used to be frozen once saved: a wrong rate meant re-importing under a
+new number. **Edit load** on the load page opens the same fields again.
+
+![The edit screen, every field prefilled from the saved load, with a line stating the status will not change](./images/load-edit-screen.jpg)
+
+Any field, the whole route — add a stop, remove one, reorder them — and the
+address of the facility behind each stop. Three things are worth knowing
+before you use it:
+
+- **Correcting an address fixes the facility everywhere.** The address lives on
+  the shared `Party` row, not on the stop, so a wrong ZIP is wrong on every
+  load that touches that dock and gets fixed on all of them. Typing a
+  _different name_ is the other thing entirely: it points this stop at another
+  facility, and never renames the one other loads depend on.
+- **Status is not editable here.** It is still whatever intake inferred, so a
+  load that saved as a draft for want of a rate stays a draft after you fill
+  the rate in. A real lifecycle needs discovery, not invention.
+- **The carrier number boxes are load-bearing.** A load stores a carrier
+  _link_, not the numbers somebody typed, so the form prefills them from the
+  linked carrier. Clearing them unlinks the load from its vetting history —
+  which is allowed, and is now recorded.
+
+Every save appends what changed to the load, and the load page shows it:
+
+![The edit trail on the load page, listing each save with its timestamp and one line per changed field](./images/load-edit-trail.jpg)
+
+Newest first, one line per field, with the value it held before. It is a
+sibling of **How this was read**, never part of it — those corrections are
+evidence about the _parser_, captured the moment a human overruled it, and
+diluting them with edits made days later would ruin the only data the
+confidence scale can be tuned from.
+
+**That screenshot also shows a defect**, in the route above the trail: stop 2
+reads `… Houston, TX 77003 · Houston, TX · 77011`. The ZIP was corrected to
+77011 and the stale 77003 is still sitting in the address line beside it. See
+[one address, stored twice](#7-what-it-cannot-do-yet) — it is a parser
+decision, not an edit-screen one, and editing is what made it dangerous.
+
+The timestamp is an instant in **CT**, where a dock window is wall time with no
+zone at all. That asymmetry is deliberate: an edit happened at a knowable
+moment, and a rate con's `0800` does not say which clock it means.
+
+A trail that lies is worse than no trail, because it gets believed. Two things
+it will not claim: a date you type with no time alongside it is not storable
+today, so it is not reported as saved; and the carrier link is reported in
+either direction, because the difference between "this carrier's authority and
+insurance were checked" and "nobody checked" is the one change that must never
+be silent.
+
+## 6. Looking at documents without the UI
 
 The corpus inspector reports what the pipeline sees, with no server and no
 database:
@@ -164,7 +216,7 @@ thresholded** — where the line sits between "same form" and "different form"
 is a judgement about real documents, and hardcoding it before seeing any would
 be guessing.
 
-## 6. What it cannot do yet
+## 7. What it cannot do yet
 
 - **Scans and faxes.** A page with no text layer needs OCR, which is not
   built — the screen says so rather than producing an empty draft. OCR does
@@ -172,8 +224,19 @@ be guessing.
 - **Per-layout templates.** Today there is one generic label-proximity parser.
   Templates should be written where they measurably beat it, which needs real
   documents.
-- **Editing a saved load.** Create and read only; a wrong field after
-  confirmation means re-importing under a new number.
+- **Deleting a load.** Editing exists now (section 5); deleting does not. A bad
+  import gets corrected rather than removed.
+- **Setting a load's status.** Inferred at intake and never settable by hand.
+- **A date with no time.** A stop stores a window as a date _and_ a time
+  together, so a document stating "Delivery 11/03" with no appointment window
+  loses the date — on the intake path as much as the edit path. The edit trail
+  stays silent about it rather than reporting a save that did not happen, which
+  is honest but not a fix.
+- **One address, stored twice.** The parser puts the whole address line into
+  the facility's `addressLine1` _and_ splits out city, state and ZIP, and the
+  load page prints all four. Correct the ZIP in the field labelled ZIP and the
+  old one is still sitting in the address line beside it. Harmless while
+  nothing could be edited; misleading now that it can.
 - **Timezones per facility.** A stop stores the facility's zone only if the
   party has one, and nothing sets one yet. The screen says "local time at the
   dock" rather than guessing from the state on the address.
