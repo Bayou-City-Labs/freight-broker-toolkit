@@ -250,9 +250,10 @@ function IntakeNote({ provenance }: { provenance: IntakeProvenance }) {
  *
  * On the screen rather than only in the column, for the same reason the intake
  * note is: a rate con is an agreement, and "the carrier pay says $1,850 — did
- * it always?" is a question someone eventually asks. Newest first, and only
- * the most recent save is open, because the usual question is about the last
- * change rather than all of them.
+ * it always?" is a question someone eventually asks. Newest first, since the
+ * usual question is about the last change — but every save is shown, because
+ * nobody has yet seen a load with enough edits to need collapsing. Revisit
+ * when one does.
  */
 function EditNote({ edits }: { edits: readonly LoadEdit[] }) {
   const newest = [...edits].reverse();
