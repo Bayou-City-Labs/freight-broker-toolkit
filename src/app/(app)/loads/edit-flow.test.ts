@@ -267,4 +267,134 @@ describe("editing a load, end to end", () => {
       expect(found?.load.referenceNumber).toBe("884213");
     });
   });
+
+  it("clears a stop's reference number, and does not report it as changed again", async () => {
+    await withRollback(async (tx) => {
+      const scope = await seedBrokerage(tx);
+      const saved = await savedLoad(tx, scope);
+      const { update, loads } = wire(tx);
+
+      const clearedPickup: [string | null, Record<string, string>][] = [
+        [saved.stops[0].id, { referenceNumber: "" }],
+        [saved.stops[1].id, DELIVERY_ROW],
+      ];
+
+      const read = readEditedLoad(editForm(clearedPickup));
+      if (!read.ok) throw new Error(read.message);
+
+      const outcome = await update(scope, saved.load.id, read.edited);
+      if (outcome.status !== "saved") throw new Error("expected a save");
+
+      const found = await loads.findById(scope, saved.load.id);
+      expect(found?.stops[0].details.appointmentNumber).toBeUndefined();
+
+      const trail = found?.load.details.edits;
+      expect(trail).toHaveLength(1);
+      expect(trail?.[0].changes.map((change) => change.path)).toContain(
+        "stops.0.referenceNumber",
+      );
+
+      // Saving the same cleared value again reports nothing further: the
+      // field is already gone, so the trail does not grow.
+      const again = readEditedLoad(editForm(clearedPickup));
+      if (!again.ok) throw new Error(again.message);
+
+      const secondOutcome = await update(scope, saved.load.id, again.edited);
+      if (secondOutcome.status !== "saved") throw new Error("expected a save");
+
+      const refound = await loads.findById(scope, saved.load.id);
+      expect(refound?.stops[0].details.appointmentNumber).toBeUndefined();
+      expect(refound?.load.details.edits).toHaveLength(1);
+    });
+  });
+
+  it("never lets an edit alter what the document said about timing", async () => {
+    await withRollback(async (tx) => {
+      const scope = await seedBrokerage(tx);
+      const saved = await savedLoad(tx, scope);
+      const { update, loads } = wire(tx);
+
+      const read = readEditedLoad(
+        editForm([
+          [saved.stops[0].id, { windowRawText: "TAMPERED" }],
+          [saved.stops[1].id, DELIVERY_ROW],
+        ]),
+      );
+      if (!read.ok) throw new Error(read.message);
+
+      const outcome = await update(scope, saved.load.id, read.edited);
+      if (outcome.status !== "saved") throw new Error("expected a save");
+
+      const found = await loads.findById(scope, saved.load.id);
+      expect(found?.stops[0].windowRawText).toBe("PU 11/02 0800-1200");
+      // Not a reportable change: it is a fact about the document, not the load.
+      expect(found?.load.details.edits).toBeUndefined();
+    });
+  });
+
+  it("never renames a facility; a different name links or creates a different one", async () => {
+    await withRollback(async (tx) => {
+      const scope = await seedBrokerage(tx);
+      const saved = await savedLoad(tx, scope);
+      const { update, parties, loads } = wire(tx);
+
+      const read = readEditedLoad(
+        editForm([
+          [saved.stops[0].id, { partyName: "NORTH HOUSTON DC" }],
+          [saved.stops[1].id, DELIVERY_ROW],
+        ]),
+      );
+      if (!read.ok) throw new Error(read.message);
+
+      const outcome = await update(scope, saved.load.id, read.edited);
+      if (outcome.status !== "saved") throw new Error("expected a save");
+
+      // The old dock is untouched, for every other load that points at it.
+      const original = await parties.findByName(scope, "ACME DISTRIBUTION");
+      expect(original?.addressLine1).toBe("4400 Navigation Blvd");
+      expect(original?.postalCode).toBe("77011");
+
+      const renamed = await parties.findByName(scope, "NORTH HOUSTON DC");
+      expect(renamed).not.toBeNull();
+
+      const found = await loads.findById(scope, saved.load.id);
+      expect(found?.stops[0].partyId).toBe(renamed?.id);
+
+      // Relinked, not renamed: a new row, not two names on one.
+      expect(await parties.list(scope)).toHaveLength(3);
+    });
+  });
+
+  it("carries forward customerRateCents and status, which this form does not collect", async () => {
+    await withRollback(async (tx) => {
+      const scope = await seedBrokerage(tx);
+      const saved = await savedLoad(tx, scope);
+      const { update, loads } = wire(tx);
+
+      // Set a non-default status and a customer rate using only real code:
+      // the repository's own `update`, not a hand-built row.
+      const seeded = await loads.update(
+        scope,
+        saved.load.id,
+        { ...saved.load, status: "dispatched", customerRateCents: 210_000 },
+        saved.stops,
+      );
+      if (!seeded) throw new Error("expected the seed write to succeed");
+
+      const read = readEditedLoad(
+        editForm([
+          [saved.stops[0].id, {}],
+          [saved.stops[1].id, DELIVERY_ROW],
+        ]),
+      );
+      if (!read.ok) throw new Error(read.message);
+
+      const outcome = await update(scope, saved.load.id, read.edited);
+      if (outcome.status !== "saved") throw new Error("expected a save");
+
+      const found = await loads.findById(scope, saved.load.id);
+      expect(found?.load.customerRateCents).toBe(210_000);
+      expect(found?.load.status).toBe("dispatched");
+    });
+  });
 });
