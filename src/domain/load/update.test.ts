@@ -258,6 +258,90 @@ describe("updateLoad", () => {
     expect(outcome.stops[0].partyId).toBe(loneStar?.id);
   });
 
+  it("applies an added stop's address to the facility it names", async () => {
+    const { update, parties, saved, unchanged } = await given();
+    const edit = unchanged();
+
+    // Removing a stop and re-adding it is how the route gets reordered, so a
+    // re-added row carrying a corrected address is an ordinary edit, not an
+    // exotic one.
+    const outcome = await update(scope, saved.load.id, {
+      ...edit,
+      stops: [
+        edit.stops[1],
+        {
+          ...edit.stops[0],
+          id: null,
+          addressLine: "2100 Navigation Blvd",
+          postalCode: "77003",
+        },
+      ],
+    });
+    if (outcome.status !== "saved") throw new Error("expected a save");
+
+    // Re-read, not the returned value: the trail's claim is about what is
+    // stored, and the returned stop would be just as happy with a stale row.
+    const acme = await parties.repo.findByName(scope, "ACME DISTRIBUTION");
+    expect(acme?.addressLine1).toBe("2100 Navigation Blvd");
+    expect(acme?.postalCode).toBe("77003");
+    // Corrected in place, not duplicated.
+    expect(parties.rows).toHaveLength(2);
+  });
+
+  it("does not blank a facility's address through a stop that stated only a name", async () => {
+    const { update, parties, saved, unchanged } = await given();
+    const edit = unchanged();
+
+    const outcome = await update(scope, saved.load.id, {
+      ...edit,
+      stops: [
+        edit.stops[1],
+        {
+          ...edit.stops[0],
+          id: null,
+          addressLine: null,
+          city: null,
+          state: null,
+          postalCode: null,
+        },
+      ],
+    });
+    if (outcome.status !== "saved") throw new Error("expected a save");
+
+    const acme = await parties.repo.findByName(scope, "ACME DISTRIBUTION");
+    expect(acme?.addressLine1).toBe("4400 Navigation Blvd");
+    expect(acme?.city).toBe("Houston");
+    expect(acme?.region).toBe("TX");
+    expect(acme?.postalCode).toBe("77011");
+  });
+
+  it("applies the submitted address when a renamed stop resolves to a held facility", async () => {
+    const { update, parties, saved, unchanged } = await given();
+    const edit = unchanged();
+
+    // A one-stop route, so the facility is resolved exactly once: pointing two
+    // stops at one dock and typing different addresses into each is a
+    // last-write-wins question this test is not about.
+    const outcome = await update(scope, saved.load.id, {
+      ...edit,
+      stops: [
+        {
+          ...edit.stops[0],
+          partyName: "LONE STAR FOODS",
+          addressLine: "900 Industrial Way",
+          city: "Dallas",
+          state: "TX",
+          postalCode: "75202",
+        },
+      ],
+    });
+    if (outcome.status !== "saved") throw new Error("expected a save");
+
+    const loneStar = await parties.repo.findByName(scope, "LONE STAR FOODS");
+    expect(loneStar?.postalCode).toBe("75202");
+    expect(parties.rows).toHaveLength(2);
+  });
+
   it("adds a stop", async () => {
     const { update, saved, unchanged } = await given();
     const edit = unchanged();

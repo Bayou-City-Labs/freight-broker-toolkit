@@ -234,6 +234,17 @@ function carriedDetails(existing: Stop | null): Stop["details"] {
  * it. A different name means a different dock: resolve it by name or create
  * it, and leave the old one alone, because other loads point at it. A facility
  * is never renamed from here; the name is the identity `findByName` matches on.
+ *
+ * Resolving by name — which is every added stop, and every existing stop whose
+ * name changed — applies the typed address too. Naming a dock the brokerage
+ * already holds and typing a corrected address for it is the same act as
+ * correcting one in place, and the screen draws no distinction between the
+ * two; discarding the address on one of the paths while the trail reported it
+ * as applied was the bug. Only the fields the submission actually stated are
+ * applied, so adding a stop and typing a bare name cannot wipe a stored
+ * address. The consequence, stated out loud: an address can be *cleared* only
+ * through a stop that already has a row, where the submission is a full
+ * statement of the facility rather than a partial one.
  */
 async function resolveParty(
   scope: BrokerageScope,
@@ -256,7 +267,12 @@ async function resolveParty(
   }
 
   const byName = await parties.findByName(scope, stop.partyName);
-  if (byName) return byName;
+  if (byName) {
+    const stated = statedAddress(stop);
+    if (Object.keys(stated).length === 0) return byName;
+    const corrected = await parties.update(scope, byName.id, { ...byName, ...stated });
+    return corrected ?? byName;
+  }
 
   return parties.create(scope, {
     name: stop.partyName,
@@ -265,6 +281,21 @@ async function resolveParty(
     region: stop.state,
     postalCode: stop.postalCode,
   });
+}
+
+/**
+ * The address fields this submission actually stated, as party columns.
+ *
+ * Absent rather than null for anything blank: this is a partial correction of
+ * a facility that already exists, not a restatement of it.
+ */
+function statedAddress(stop: EditedStop): Partial<Party> {
+  return {
+    ...(stop.addressLine === null ? {} : { addressLine1: stop.addressLine }),
+    ...(stop.city === null ? {} : { city: stop.city }),
+    ...(stop.state === null ? {} : { region: stop.state }),
+    ...(stop.postalCode === null ? {} : { postalCode: stop.postalCode }),
+  };
 }
 
 /**
