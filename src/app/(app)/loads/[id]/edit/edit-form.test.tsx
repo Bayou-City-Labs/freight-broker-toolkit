@@ -135,9 +135,10 @@ describe("the edit form", () => {
     const html = render();
 
     // A load stores the link, not the numbers someone typed. Blank fields here
-    // would make every save unlink the carrier.
-    expect(html).toContain('value="133655"');
-    expect(html).toContain('value="264184"');
+    // would make every save unlink the carrier. Each value is bound to its own
+    // field name so a swap between the two boxes fails this test.
+    expect(html).toMatch(/name="carrierMcNumber"[^>]*value="133655"/);
+    expect(html).toMatch(/name="carrierDotNumber"[^>]*value="264184"/);
   });
 
   it("carries the stop's id, so the route is renumbered and not reissued", () => {
@@ -157,8 +158,13 @@ describe("the edit form", () => {
     expect(html).toContain("every load that uses it");
   });
 
-  it("offers an empty id for a load with no carrier", () => {
+  it("leaves the carrier number boxes empty for a load with no carrier", () => {
     const html = render({ carrier: null, load: { ...load, carrierId: null } });
-    expect(html).toContain("Save changes");
+
+    // An unlinked load is the one case where empty boxes are correct rather
+    // than destructive; a hardcoded prefill would also pass this test's old
+    // "Save changes" assertion, so bind it to the real fields instead.
+    expect(html).toMatch(/name="carrierMcNumber"[^>]*value=""/);
+    expect(html).toMatch(/name="carrierDotNumber"[^>]*value=""/);
   });
 });
