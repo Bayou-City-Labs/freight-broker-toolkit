@@ -79,6 +79,12 @@ export interface PartyRepository {
    * not of one load, so a wrong ZIP is wrong everywhere. Renaming is a
    * different act — a stop that should point at a different facility is
    * re-resolved by name instead. Null when the facility is not in scope.
+   *
+   * `input` is a **full statement of the facility, not a patch**: every column
+   * is written, so a field the caller omits is blanked — `country` back to
+   * "US", `details` to `{}`, the contact fields and `addressLine2` to null.
+   * Both callers spread the held record for that reason. `id`, `brokerageId`
+   * and `createdAt` cannot be written through it.
    */
   update(scope: BrokerageScope, id: string, input: NewParty): Promise<Party | null>;
 }
@@ -103,6 +109,17 @@ export interface LoadRepository {
    * The route is replaced rather than patched: stops carrying an id are kept
    * and renumbered, stops without one are inserted, and any stop of this load
    * absent from the list is deleted. Null when the load is not in scope.
+   *
+   * **Array order is the route order.** `sequence` on each `StopWrite` is
+   * ignored here — it is derived from the position in the list — where
+   * `create` honours it. And `input` is a total write: see `LoadUpdate` for
+   * why `status` and `details` are required when `NewLoad` has both optional.
+   *
+   * Two stops stating the same id is not a case this answers well: both writes
+   * carry it, the last one wins on the single surviving row, and the route
+   * comes back shorter than it was written. Nothing reachable does it — the
+   * form renders one id per row and only ever attaches an id it read back —
+   * and a caller that can should dedupe before it gets here.
    */
   update(
     scope: BrokerageScope,

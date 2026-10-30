@@ -140,14 +140,21 @@ export interface LoadWithStops {
 /**
  * The input to an update, as distinct from a create.
  *
- * `status` is required here where it is optional on `NewLoad`, and that is
- * deliberate rather than tidy. `create` resolves an absent status with
- * `input.status ?? "draft"`; an `update` doing the same would silently demote
- * a booked load to a draft every time a caller omitted the field. Making it
- * required means the compiler asks the question instead.
+ * `status` and `details` are required here where both are optional on
+ * `NewLoad`, and that is deliberate rather than tidy. An update is a **total
+ * write**: every column the caller omits is written as null, or as the
+ * fallback `create` would have used. For `status` that silently demotes a
+ * booked load to a draft; for `details` it discards `intake` — the only
+ * evidence the confidence scale can ever be calibrated from — and `edits`, the
+ * audit trail, neither of which can be reconstructed. Making both required
+ * means the compiler asks the question instead.
+ *
+ * Every other field is still optional and still overwritten, so a caller
+ * holding a partial load has to restate it rather than patch it.
  */
 export interface LoadUpdate extends NewLoad {
   readonly status: LoadStatus;
+  readonly details: LoadDetails;
 }
 
 /**

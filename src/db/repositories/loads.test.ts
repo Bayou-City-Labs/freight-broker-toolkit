@@ -294,7 +294,7 @@ describe("load repository", () => {
     });
   });
 
-  it("updates a load's fields and keeps the ones it was not given", async () => {
+  it("writes every column it is given, so a field left out is cleared", async () => {
     await withRollback(async (tx) => {
       const scope = await seedBrokerage(tx);
       const parties = createPartyRepository(tx);
@@ -308,6 +308,7 @@ describe("load repository", () => {
           status: "booked",
           carrierPayCents: 185_000,
           customerRateCents: 210_000,
+          details: { equipmentAsWritten: "53' Dry Van" },
         },
         [{ sequence: 0, type: "pickup", partyId: party.id }],
       );
@@ -319,16 +320,24 @@ describe("load repository", () => {
           referenceNumber: "884213",
           status: created.load.status,
           carrierPayCents: 190_000,
-          customerRateCents: created.load.customerRateCents,
+          // customerRateCents deliberately not restated.
+          details: created.load.details,
         },
         [{ id: created.stops[0].id, sequence: 0, type: "pickup", partyId: party.id }],
       );
 
       expect(updated?.load.carrierPayCents).toBe(190_000);
-      // Status is not this feature's to change, and the customer rate is not on
-      // the edit form at all. Both have to survive a save that omits them.
       expect(updated?.load.status).toBe("booked");
-      expect(updated?.load.customerRateCents).toBe(210_000);
+      // An update is a total write, not a patch: a column the caller does not
+      // restate is written as null. This test used to claim the opposite while
+      // passing every field, so it could not have failed. `updateLoad` carries
+      // status and customerRateCents forward precisely because the repository
+      // does not, and `edit-flow.test.ts` pins that end to end.
+      expect(updated?.load.customerRateCents).toBeNull();
+      // Which is why `details` is required on `LoadUpdate`. Omitting it would
+      // take the intake record and the edit trail with it, and neither can be
+      // reconstructed.
+      expect(updated?.load.details.equipmentAsWritten).toBe("53' Dry Van");
     });
   });
 
@@ -346,7 +355,7 @@ describe("load repository", () => {
       const updated = await loads.update(
         scope,
         created.load.id,
-        { referenceNumber: "884213", status: "draft" },
+        { referenceNumber: "884213", status: "draft", details: {} },
         [
           {
             id: created.stops[0].id,
@@ -385,7 +394,7 @@ describe("load repository", () => {
       const updated = await loads.update(
         scope,
         created.load.id,
-        { referenceNumber: "884213", status: "draft" },
+        { referenceNumber: "884213", status: "draft", details: {} },
         [
           { id: b.id, sequence: 0, type: "delivery", partyId: second.id },
           { id: a.id, sequence: 1, type: "pickup", partyId: first.id },
@@ -415,7 +424,7 @@ describe("load repository", () => {
       const updated = await loads.update(
         scope,
         created.load.id,
-        { referenceNumber: "884213", status: "draft" },
+        { referenceNumber: "884213", status: "draft", details: {} },
         [
           { id: created.stops[1].id, sequence: 0, type: "delivery", partyId: party.id },
           { sequence: 1, type: "delivery", partyId: party.id },
@@ -425,6 +434,43 @@ describe("load repository", () => {
       expect(updated?.stops).toHaveLength(2);
       expect(updated?.stops[0].id).toBe(created.stops[1].id);
       expect(updated?.stops[1].id).not.toBe(created.stops[0].id);
+    });
+  });
+
+  it("reissues the whole route when no submitted stop carries an id", async () => {
+    await withRollback(async (tx) => {
+      const scope = await seedBrokerage(tx);
+      const parties = createPartyRepository(tx);
+      const loads = createLoadRepository(tx);
+
+      const party = await parties.create(scope, { name: "ACME DISTRIBUTION" });
+      const created = await loads.create(scope, { referenceNumber: "884213" }, [
+        { sequence: 0, type: "pickup", partyId: party.id },
+        { sequence: 1, type: "delivery", partyId: party.id },
+      ]);
+
+      // Reachable from the edit screen: press Remove this stop on every row,
+      // then Add delivery. `editedLoadSchema`'s min(1) forbids an empty route,
+      // not a route of entirely new rows — so `kept` is empty while the write
+      // is not, which is the branch the `notInArray(id, [])` special case
+      // exists for. It was previously recorded as unreachable and untested.
+      const updated = await loads.update(
+        scope,
+        created.load.id,
+        { referenceNumber: "884213", status: "draft", details: {} },
+        [{ sequence: 0, type: "delivery", partyId: party.id }],
+      );
+
+      expect(updated?.stops).toHaveLength(1);
+      expect(updated?.stops[0].sequence).toBe(0);
+      const ids = created.stops.map((stop) => stop.id);
+      expect(ids).not.toContain(updated?.stops[0].id);
+
+      // Re-read, because the delete is the half that a returned value cannot
+      // vouch for.
+      const found = await loads.findById(scope, created.load.id);
+      expect(found?.stops).toHaveLength(1);
+      expect(found?.stops[0].id).toBe(updated?.stops[0].id);
     });
   });
 
@@ -440,7 +486,7 @@ describe("load repository", () => {
         await loads.update(
           mine,
           created.load.id,
-          { referenceNumber: "hijacked", status: "cancelled" },
+          { referenceNumber: "hijacked", status: "cancelled", details: {} },
           [],
         ),
       ).toBeNull();
