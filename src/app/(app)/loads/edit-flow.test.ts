@@ -32,6 +32,7 @@ function wire(tx: DbExecutor) {
   return {
     loads,
     parties,
+    carriers,
     confirm: createConfirmDraft({ loads, parties, carriers }),
     update: createUpdateLoad({ loads, parties, carriers }),
   };
@@ -362,6 +363,53 @@ describe("editing a load, end to end", () => {
 
       // Relinked, not renamed: a new row, not two names on one.
       expect(await parties.list(scope)).toHaveLength(3);
+    });
+  });
+
+  it("records the carrier link being broken, which is a real column write", async () => {
+    await withRollback(async (tx) => {
+      const scope = await seedBrokerage(tx);
+      const { carriers } = wire(tx);
+
+      // The carrier has to exist before intake saves, because that is the only
+      // way the load gets linked: intake never creates one.
+      const carrier = await carriers.create(scope, {
+        mcNumber: "987654",
+        dotNumber: "1234567",
+        legalName: "GULF COAST HAULING LLC",
+      });
+
+      const saved = await savedLoad(tx, scope);
+      const { update, loads } = wire(tx);
+      expect(saved.load.carrierId).toBe(carrier.id);
+
+      // Both number boxes cleared, nothing else touched.
+      const read = readEditedLoad(
+        editForm(
+          [
+            [saved.stops[0].id, {}],
+            [saved.stops[1].id, DELIVERY_ROW],
+          ],
+          { carrierMcNumber: "" },
+        ),
+      );
+      if (!read.ok) throw new Error(read.message);
+
+      const outcome = await update(scope, saved.load.id, read.edited);
+      if (outcome.status !== "saved") throw new Error("expected a save");
+
+      const found = await loads.findById(scope, saved.load.id);
+      // The column really moved: this load no longer has a vetting history
+      // behind it.
+      expect(found?.load.carrierId).toBeNull();
+      expect(found?.load.details.edits).toHaveLength(1);
+      expect(found?.load.details.edits?.[0].changes).toEqual([
+        {
+          path: "carrierId",
+          from: "GULF COAST HAULING LLC",
+          to: "no vetted carrier",
+        },
+      ]);
     });
   });
 

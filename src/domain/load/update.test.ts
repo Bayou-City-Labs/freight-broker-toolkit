@@ -493,6 +493,58 @@ describe("updateLoad", () => {
     expect(carriers.rows).toHaveLength(1);
   });
 
+  it("records the carrier link being broken, and being made again", async () => {
+    const carriers = fakeCarriers([
+      {
+        id: "carrier-known",
+        brokerageId: scope.brokerageId,
+        dotNumber: "1234567",
+        mcNumber: "987654",
+        legalName: "GULF COAST HAULING LLC",
+        dbaName: null,
+        details: {},
+      },
+    ]);
+    const { update, saved, unchanged } = await given(carriers);
+    expect(saved.load.carrierId).toBe("carrier-known");
+
+    // Clearing both number boxes is the *only* change on this save, which is
+    // the case that used to leave no trace a save had happened at all.
+    const unlinked = await update(scope, saved.load.id, {
+      ...unchanged(),
+      carrierMcNumber: null,
+      carrierDotNumber: null,
+    });
+    if (unlinked.status !== "saved") throw new Error("expected a save");
+
+    expect(unlinked.load.carrierId).toBeNull();
+    expect(unlinked.carrierLinked).toBe(false);
+    expect(unlinked.load.details.edits).toEqual([
+      {
+        at: at.toISOString(),
+        changes: [
+          // The carrier is named, not identified by UUID, and the empty side
+          // says so in words — a dash would read as "unknown".
+          {
+            path: "carrierId",
+            from: "GULF COAST HAULING LLC",
+            to: "no vetted carrier",
+          },
+        ],
+      },
+    ]);
+
+    // Relinking is equally consequential and equally recorded.
+    const relinked = await update(scope, saved.load.id, unchanged());
+    if (relinked.status !== "saved") throw new Error("expected a save");
+
+    expect(relinked.load.carrierId).toBe("carrier-known");
+    expect(relinked.load.details.edits).toHaveLength(2);
+    expect(relinked.load.details.edits?.[1].changes).toEqual([
+      { path: "carrierId", from: "no vetted carrier", to: "GULF COAST HAULING LLC" },
+    ]);
+  });
+
   it("does not invent a carrier for a number nobody has vetted", async () => {
     const { update, carriers, saved, unchanged } = await given();
 

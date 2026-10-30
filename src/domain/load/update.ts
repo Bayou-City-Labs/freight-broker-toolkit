@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { Carrier } from "../carrier/carrier";
 import type { LoadEditChange } from "../details";
 import { Money } from "../money";
 import type {
@@ -113,6 +114,14 @@ export function createUpdateLoad({
 
     const carrier = await findCarrier(scope, carriers, edited);
 
+    // Read for its name only, so the trail can say which carrier the link was
+    // to. A repository call for one field is worth it here: this is the field
+    // that separates "authority and insurance were checked" from "nobody
+    // checked", and `carrierId: 01a187e8-… → null` answers nobody's question.
+    const linkedBefore = current.load.carrierId
+      ? await carriers.findById(scope, current.load.carrierId)
+      : null;
+
     const before = await statedView(scope, parties, current);
 
     const existingById = new Map(current.stops.map((stop) => [stop.id, stop]));
@@ -127,7 +136,10 @@ export function createUpdateLoad({
       });
     }
 
-    const changes = diff(before, edited);
+    const changes = diff(before, edited, {
+      before: linkedBefore,
+      after: carrier,
+    });
     const edits =
       changes.length === 0
         ? current.load.details.edits
@@ -262,7 +274,8 @@ async function resolveParty(
  * Only what a saved load can actually give back. The MC and DOT numbers are
  * not among them — a load stores a carrier *link*, not the numbers someone
  * typed — so a changed linkage is reported as `carrierId` rather than
- * pretending to know which number moved.
+ * pretending to know which number moved. `carrierId` is therefore compared
+ * separately from `LOAD_PATHS`; see `diff`.
  */
 interface StatedView {
   readonly referenceNumber: string;
@@ -359,7 +372,31 @@ const STOP_PATHS = [
   "referenceNumber",
 ] as const;
 
-function diff(before: StatedView, after: EditedLoad): LoadEditChange[] {
+/**
+ * The vetting link, before and after, resolved to records so the trail can
+ * name the carrier instead of printing a UUID.
+ *
+ * Which *number* moved is not knowable — a load stores the link, not the MC
+ * and DOT numbers someone typed — and is not the interesting question anyway.
+ * The interesting question is whether this load still has a carrier whose
+ * authority and insurance were checked.
+ */
+interface CarrierLink {
+  readonly before: Carrier | null;
+  readonly after: Carrier | null;
+}
+
+/** Said in words, because a dash in this column would read as "unknown". */
+const NO_CARRIER_LINK = "no vetted carrier";
+
+function carrierLinkName(id: string | null, carrier: Carrier | null): string {
+  if (id === null) return NO_CARRIER_LINK;
+  // The id is the fallback for a link pointing at a row that is gone or out of
+  // scope, which should not happen; printing it beats printing nothing.
+  return carrier?.legalName ?? id;
+}
+
+function diff(before: StatedView, after: EditedLoad, link: CarrierLink): LoadEditChange[] {
   const changes: LoadEditChange[] = [];
 
   for (const [path, key] of LOAD_PATHS) {
@@ -368,6 +405,19 @@ function diff(before: StatedView, after: EditedLoad): LoadEditChange[] {
     if (from !== to) {
       changes.push({ path, from: display(path, from), to: display(path, to) });
     }
+  }
+
+  // Not in LOAD_PATHS, because it is not a field on the form: two number boxes
+  // resolve to one link, and the link is what gets stored. It is compared on
+  // the stored id rather than on the resolved record, so a carrier row that
+  // has become unreadable does not read as an unlink.
+  const linkedTo = link.after?.id ?? null;
+  if (before.carrierId !== linkedTo) {
+    changes.push({
+      path: "carrierId",
+      from: carrierLinkName(before.carrierId, link.before),
+      to: carrierLinkName(linkedTo, link.after),
+    });
   }
 
   if (before.stops.length !== after.stops.length) {
