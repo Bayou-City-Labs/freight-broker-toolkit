@@ -51,6 +51,21 @@ const load: Load = {
   },
 };
 
+const STOP_COLUMNS = [
+  "stop.id",
+  "stop.kind",
+  "stop.partyName",
+  "stop.addressLine",
+  "stop.city",
+  "stop.state",
+  "stop.postalCode",
+  "stop.date",
+  "stop.windowStart",
+  "stop.windowEnd",
+  "stop.referenceNumber",
+  "stop.windowRawText",
+] as const;
+
 const stop: Stop = {
   id: "stop-1",
   brokerageId: "brokerage-1",
@@ -106,20 +121,27 @@ describe("the edit form", () => {
       "weightLbs",
       "equipment",
       "carrierRateCents",
-      "stop.id",
-      "stop.kind",
-      "stop.partyName",
-      "stop.addressLine",
-      "stop.city",
-      "stop.state",
-      "stop.postalCode",
-      "stop.date",
-      "stop.windowStart",
-      "stop.windowEnd",
-      "stop.referenceNumber",
-      "stop.windowRawText",
+      ...STOP_COLUMNS,
     ]) {
       expect(html).toContain(`name="${name}"`);
+    }
+  });
+
+  it("emits each stop field exactly once per row", () => {
+    const second: Stop = { ...stop, id: "stop-2", sequence: 1, type: "delivery" };
+    const html = render({ stops: [stop, second] });
+
+    // `readLoadValues` reads each stop field with `getAll` and indexes the
+    // columns by position, so the rows only line up while every column is the
+    // same length. One duplicated or dropped input shifts that column against
+    // the others by a row — for `stop.city` that misfiles an address, and for
+    // `stop.id` it writes one stop's identity onto another stop's content: the
+    // wrong row is overwritten, a live stop reads as taken off the route, and
+    // the trail describes a route nobody submitted. Counting is what catches
+    // it; asserting presence cannot.
+    for (const name of STOP_COLUMNS) {
+      const pattern = new RegExp(`name="${name.replace(".", "\\.")}"`, "g");
+      expect(html.match(pattern) ?? []).toHaveLength(2);
     }
   });
 

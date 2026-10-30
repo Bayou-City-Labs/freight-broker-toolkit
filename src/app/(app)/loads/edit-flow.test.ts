@@ -117,10 +117,13 @@ function editForm(
 ): FormData {
   const formData = new FormData();
   formData.set("loadId", "ignored-by-the-reader");
+  // Before the overrides, not after: the edit form always posts both carrier
+  // number boxes, and setting this one last meant a test stating a USDOT
+  // number silently got an empty one — and passed while exercising nothing.
+  formData.set("carrierDotNumber", "");
   for (const [key, value] of Object.entries({ ...RATE_CON, ...overrides })) {
     formData.set(key, value);
   }
-  formData.set("carrierDotNumber", "");
 
   for (const [id, fields] of stops) {
     const row: Record<string, string> = {
