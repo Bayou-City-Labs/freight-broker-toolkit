@@ -5,6 +5,7 @@ import {
 } from "@/domain/intake/confirm";
 import { loadDraftSchema, type LoadDraft } from "@/domain/intake/load-draft";
 import { compareToDraft } from "@/domain/intake/provenance";
+import { editedLoadSchema, type EditedLoad } from "@/domain/load/update";
 import { Money } from "@/domain/money";
 
 /**
@@ -29,7 +30,7 @@ export function readConfirmedLoad(formData: FormData): FormReadResult {
   }
 
   const problems: string[] = [];
-  const values = readValues(formData, problems);
+  const values = readLoadValues(formData, problems);
 
   // A number we cannot read is reported, never quietly nulled. Saving a load
   // without the rate the broker just typed is worse than refusing to save.
@@ -59,6 +60,42 @@ export function readConfirmedLoad(formData: FormData): FormReadResult {
   return { ok: true, confirmed: parsed.data };
 }
 
+export type EditReadResult =
+  | { readonly ok: true; readonly edited: EditedLoad }
+  | { readonly ok: false; readonly message: string };
+
+/**
+ * The edit form's submission, turned into an `EditedLoad`.
+ *
+ * Shares `readLoadValues` with the confirm path, so the money and weight
+ * parsing — the part a human's typing actually breaks — exists once. What it
+ * adds is `stop.id`: the row a stop came from, or null for one the reviewer
+ * added. That distinction is what lets the route be renumbered instead of
+ * reissued.
+ */
+export function readEditedLoad(formData: FormData): EditReadResult {
+  const problems: string[] = [];
+  const values = readLoadValues(formData, problems);
+  if (problems.length > 0) return { ok: false, message: problems[0] };
+
+  const ids = formData.getAll("stop.id").map((value) => optional(value));
+
+  const parsed = editedLoadSchema.safeParse({
+    ...values,
+    stops: values.stops.map((stop, index) => ({ ...stop, id: ids[index] ?? null })),
+  });
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message:
+        parsed.error.issues[0]?.message ?? "Some of these values could not be saved.",
+    };
+  }
+
+  return { ok: true, edited: parsed.data };
+}
+
 /**
  * The draft the extractor produced, round-tripped through the browser.
  *
@@ -85,7 +122,7 @@ function parseDraft(value: FormDataEntryValue | null): LoadDraft | null {
  * sequence. That is what makes adding and removing rows on the review screen
  * work without renumbering every input's `name` as the list changes.
  */
-function readValues(
+export function readLoadValues(
   formData: FormData,
   problems: string[],
 ): Omit<ConfirmedLoad, "provenance"> {

@@ -3,7 +3,7 @@ import { allLines } from "@/domain/intake/document-text";
 import { parseLines } from "@/domain/intake/label-parser";
 import { createPlainTextExtractor } from "@/domain/intake/plain-text";
 import type { LoadDraft } from "@/domain/intake/load-draft";
-import { readConfirmedLoad } from "./form-values";
+import { readConfirmedLoad, readEditedLoad } from "./form-values";
 
 const RATE_CON = `Load #: 884213              Date: 10/28/2026
 CARRIER: GULF COAST HAULING LLC
@@ -343,5 +343,92 @@ describe("readConfirmedLoad", () => {
     formData.set("textSource", "chatgpt");
 
     expect(readConfirmedLoad(formData).ok).toBe(false);
+  });
+});
+
+describe("readEditedLoad", () => {
+  function editForm(overrides: Record<string, string> = {}): FormData {
+    const formData = new FormData();
+    formData.set("referenceNumber", "884213");
+    formData.set("carrierName", "GULF COAST HAULING LLC");
+    formData.set("carrierMcNumber", "MC-987654");
+    formData.set("carrierDotNumber", "");
+    formData.set("commodity", "Canned goods");
+    formData.set("weightLbs", "42,000");
+    formData.set("equipment", "53' Dry Van");
+    formData.set("carrierRateCents", "1850.00");
+    for (const [key, value] of Object.entries(overrides)) formData.set(key, value);
+
+    formData.append("stop.id", "stop-1");
+    formData.append("stop.kind", "pickup");
+    formData.append("stop.partyName", "ACME DISTRIBUTION");
+    formData.append("stop.addressLine", "4400 Navigation Blvd");
+    formData.append("stop.city", "Houston");
+    formData.append("stop.state", "tx");
+    formData.append("stop.postalCode", "77011");
+    formData.append("stop.date", "2026-11-02");
+    formData.append("stop.windowStart", "08:00");
+    formData.append("stop.windowEnd", "12:00");
+    formData.append("stop.referenceNumber", "PU-4471");
+    formData.append("stop.windowRawText", "PU 11/02 0800-1200");
+
+    formData.append("stop.id", "");
+    formData.append("stop.kind", "delivery");
+    formData.append("stop.partyName", "LONE STAR FOODS");
+    formData.append("stop.addressLine", "");
+    formData.append("stop.city", "Dallas");
+    formData.append("stop.state", "TX");
+    formData.append("stop.postalCode", "");
+    formData.append("stop.date", "2026-11-03");
+    formData.append("stop.windowStart", "14:00");
+    formData.append("stop.windowEnd", "");
+    formData.append("stop.referenceNumber", "");
+    formData.append("stop.windowRawText", "");
+
+    return formData;
+  }
+
+  it("reads the load and its stops, in order", () => {
+    const read = readEditedLoad(editForm());
+    expect(read.ok).toBe(true);
+    if (!read.ok) return;
+
+    expect(read.edited.referenceNumber).toBe("884213");
+    // "MC-987654" and "987654" are the same number.
+    expect(read.edited.carrierMcNumber).toBe("987654");
+    expect(read.edited.weightLbs).toBe(42000);
+    // Dollars in the box, cents in the record.
+    expect(read.edited.carrierRateCents).toBe(185_000);
+    expect(read.edited.stops.map((stop) => stop.kind)).toEqual(["pickup", "delivery"]);
+    expect(read.edited.stops[0].state).toBe("TX");
+    expect(read.edited.stops[1].addressLine).toBeNull();
+  });
+
+  it("tells an existing stop from an added one", () => {
+    const read = readEditedLoad(editForm());
+    if (!read.ok) return;
+
+    expect(read.edited.stops[0].id).toBe("stop-1");
+    // A blank id is a row the reviewer added, not a row with a blank id.
+    expect(read.edited.stops[1].id).toBeNull();
+  });
+
+  it("refuses a rate it cannot read rather than saving a blank one", () => {
+    const read = readEditedLoad(editForm({ carrierRateCents: "about $1850" }));
+    expect(read.ok).toBe(false);
+    if (read.ok) return;
+    expect(read.message).toContain("is not an amount");
+  });
+
+  it("refuses a load with no stops", () => {
+    const formData = new FormData();
+    formData.set("referenceNumber", "884213");
+    formData.set("weightLbs", "");
+    formData.set("carrierRateCents", "");
+
+    const read = readEditedLoad(formData);
+    expect(read.ok).toBe(false);
+    if (read.ok) return;
+    expect(read.message).toBe("A load needs at least one stop");
   });
 });
