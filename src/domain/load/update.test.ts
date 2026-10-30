@@ -119,8 +119,10 @@ describe("updateLoad", () => {
       {
         at: at.toISOString(),
         changes: [
-          // `Money.toDollarString()` emits "1850.00" — no separators, no sign.
-          { path: "carrierPayCents", from: "$1850.00", to: "$1900.00" },
+          // Formatted the way the rest of the page formats money, separators
+          // and all. Trail amounts are frozen at write time, so a formatter
+          // improvement next month would not repair an entry written today.
+          { path: "carrierPayCents", from: "$1,850.00", to: "$1,900.00" },
         ],
       },
     ]);

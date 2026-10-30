@@ -7,7 +7,7 @@ describe("loadDetailsSchema", () => {
       edits: [
         {
           at: "2026-10-29T20:15:00.000Z",
-          changes: [{ path: "carrierPayCents", from: "$1750.00", to: "$1850.00" }],
+          changes: [{ path: "carrierPayCents", from: "$1,750.00", to: "$1,850.00" }],
         },
       ],
     });

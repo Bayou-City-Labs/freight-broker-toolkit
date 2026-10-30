@@ -536,13 +536,17 @@ function diff(before: StatedView, after: EditedLoad, link: CarrierLink): LoadEdi
  *
  * `path` is the storage-side name from `LOAD_PATHS`, which is why only
  * `carrierPayCents` is tested for and not the stated `carrierRateCents`.
+ *
+ * Money goes through `Money.format`, the same formatter the screens use, so a
+ * trail entry and the figure above it agree. Formatting money by hand here is
+ * not a cosmetic slip that can be tidied later: these strings are frozen when
+ * they are written, and improving a formatter next month cannot repair an
+ * entry written today.
  */
 function display(path: string, value: string | number | null): string | null {
   if (value === null) return null;
   if (typeof value === "number") {
-    return path === "carrierPayCents"
-      ? `$${Money.fromCents(value).toDollarString()}`
-      : String(value);
+    return path === "carrierPayCents" ? Money.fromCents(value).format() : String(value);
   }
   return value;
 }
