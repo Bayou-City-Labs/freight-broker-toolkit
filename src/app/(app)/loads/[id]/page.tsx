@@ -257,4 +257,3 @@ function IntakeNote({ provenance }: { provenance: IntakeProvenance }) {
     </p>
   );
 }
-

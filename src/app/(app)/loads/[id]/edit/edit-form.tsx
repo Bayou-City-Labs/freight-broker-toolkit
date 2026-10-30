@@ -196,7 +196,8 @@ function StopFields({
   onRemove: () => void;
 }) {
   const stop = row.stop;
-  const date = stop?.opensAtLocal?.slice(0, 10) ?? stop?.closesAtLocal?.slice(0, 10) ?? "";
+  const date =
+    stop?.opensAtLocal?.slice(0, 10) ?? stop?.closesAtLocal?.slice(0, 10) ?? "";
 
   return (
     <fieldset className={styles.stopCard}>
@@ -237,7 +238,11 @@ function StopFields({
         />
         <Field name="stop.city" label="City" defaultValue={party?.city ?? ""} />
         <Field name="stop.state" label="State" defaultValue={party?.region ?? ""} />
-        <Field name="stop.postalCode" label="ZIP" defaultValue={party?.postalCode ?? ""} />
+        <Field
+          name="stop.postalCode"
+          label="ZIP"
+          defaultValue={party?.postalCode ?? ""}
+        />
         <Field name="stop.date" label="Date" defaultValue={date} type="date" />
         <Field
           name="stop.windowStart"

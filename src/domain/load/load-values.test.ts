@@ -58,7 +58,9 @@ describe("loadValuesSchema", () => {
   it("refuses a date or time that is not wall-clock notation", () => {
     expect(stopValuesSchema.safeParse(stop({ date: "11/02/2026" })).success).toBe(false);
     expect(stopValuesSchema.safeParse(stop({ windowStart: "8am" })).success).toBe(false);
-    expect(stopValuesSchema.safeParse(stop({ windowStart: "24:00" })).success).toBe(false);
+    expect(stopValuesSchema.safeParse(stop({ windowStart: "24:00" })).success).toBe(
+      false,
+    );
   });
 
   it("requires a name on every stop, because a stop is a place", () => {

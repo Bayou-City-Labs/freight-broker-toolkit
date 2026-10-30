@@ -6,7 +6,6 @@
  * project has shipped it once already.
  */
 export type EditState =
-  | { readonly status: "idle" }
-  | { readonly status: "error"; readonly message: string };
+  { readonly status: "idle" } | { readonly status: "error"; readonly message: string };
 
 export const initialEditState: EditState = { status: "idle" };

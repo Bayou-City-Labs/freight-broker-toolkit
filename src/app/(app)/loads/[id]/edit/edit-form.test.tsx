@@ -45,7 +45,10 @@ const load: Load = {
   customerRateCents: 210_000,
   carrierPayCents: 185_000,
   carrierId: "carrier-1",
-  details: { equipmentAsWritten: "53' Dry Van", carrierAsWritten: "GULF COAST HAULING LLC" },
+  details: {
+    equipmentAsWritten: "53' Dry Van",
+    carrierAsWritten: "GULF COAST HAULING LLC",
+  },
 };
 
 const stop: Stop = {

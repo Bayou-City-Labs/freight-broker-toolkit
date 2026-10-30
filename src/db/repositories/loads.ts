@@ -175,9 +175,12 @@ export function createLoadRepository(executor: DbExecutor): LoadRepository {
               .set(row)
               .where(and(eq(stops.loadId, id), eq(stops.id, stop.id)));
           } else {
-            await tx
-              .insert(stops)
-              .values({ id: newId(), brokerageId: scope.brokerageId, loadId: id, ...row });
+            await tx.insert(stops).values({
+              id: newId(),
+              brokerageId: scope.brokerageId,
+              loadId: id,
+              ...row,
+            });
           }
         }
 

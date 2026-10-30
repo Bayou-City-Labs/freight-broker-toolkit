@@ -148,7 +148,8 @@ function editForm(
 
 async function savedLoad(tx: DbExecutor, scope: BrokerageScope) {
   const outcome = await wire(tx).confirm(scope, confirmedLoad());
-  if (outcome.status !== "saved") throw new Error(`expected a save, got ${outcome.status}`);
+  if (outcome.status !== "saved")
+    throw new Error(`expected a save, got ${outcome.status}`);
   return outcome;
 }
 
@@ -226,9 +227,7 @@ describe("editing a load, end to end", () => {
       const saved = await savedLoad(tx, scope);
       const { update, loads } = wire(tx);
 
-      const read = readEditedLoad(
-        editForm([[saved.stops[1].id, DELIVERY_ROW]]),
-      );
+      const read = readEditedLoad(editForm([[saved.stops[1].id, DELIVERY_ROW]]));
       if (!read.ok) throw new Error(read.message);
 
       const outcome = await update(scope, saved.load.id, read.edited);

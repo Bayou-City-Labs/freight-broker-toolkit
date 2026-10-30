@@ -29,40 +29,40 @@
 
 **Created**
 
-| File | Responsibility |
-| --- | --- |
-| `src/domain/load/load-values.ts` | The fields of a load as a human states them: zod schemas, plus the shared translation from stated values into stored shapes (`toNewStop`, `classifyEquipment`, `findCarrier`). Imported by both intake and editing. |
-| `src/domain/load/load-values.test.ts` | Schema boundaries: a load needs a stop, a date must be `YYYY-MM-DD`, a time must be `HH:MM`. |
-| `src/domain/load/update.ts` | The edit use case. Ports only. |
-| `src/domain/load/update.test.ts` | The use case against in-memory fakes. |
-| `src/test/fakes.ts` | In-memory `LoadRepository`, `PartyRepository`, `CarrierRepository`, lifted out of `confirm.test.ts` so two test files cannot drift from the ports. |
-| `src/app/(app)/loads/field.tsx` | The editable field, with no opinion about confidence. |
-| `src/app/(app)/loads/[id]/edit/page.tsx` | Server component: guard, read, resolve parties and carrier, render. |
-| `src/app/(app)/loads/[id]/edit/edit-form.tsx` | Client component: the form. |
-| `src/app/(app)/loads/[id]/edit/actions.ts` | `editLoadAction`. |
-| `src/app/(app)/loads/[id]/edit/form-state.ts` | `EditState`, `initialEditState`. |
-| `src/app/(app)/loads/[id]/edit/edit-form.test.tsx` | Render test pinning every `name` the action reads. |
-| `src/app/(app)/loads/edit-flow.test.ts` | Intake a fixture, then edit it, against real adapters and real Postgres. |
+| File                                               | Responsibility                                                                                                                                                                                                      |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/domain/load/load-values.ts`                   | The fields of a load as a human states them: zod schemas, plus the shared translation from stated values into stored shapes (`toNewStop`, `classifyEquipment`, `findCarrier`). Imported by both intake and editing. |
+| `src/domain/load/load-values.test.ts`              | Schema boundaries: a load needs a stop, a date must be `YYYY-MM-DD`, a time must be `HH:MM`.                                                                                                                        |
+| `src/domain/load/update.ts`                        | The edit use case. Ports only.                                                                                                                                                                                      |
+| `src/domain/load/update.test.ts`                   | The use case against in-memory fakes.                                                                                                                                                                               |
+| `src/test/fakes.ts`                                | In-memory `LoadRepository`, `PartyRepository`, `CarrierRepository`, lifted out of `confirm.test.ts` so two test files cannot drift from the ports.                                                                  |
+| `src/app/(app)/loads/field.tsx`                    | The editable field, with no opinion about confidence.                                                                                                                                                               |
+| `src/app/(app)/loads/[id]/edit/page.tsx`           | Server component: guard, read, resolve parties and carrier, render.                                                                                                                                                 |
+| `src/app/(app)/loads/[id]/edit/edit-form.tsx`      | Client component: the form.                                                                                                                                                                                         |
+| `src/app/(app)/loads/[id]/edit/actions.ts`         | `editLoadAction`.                                                                                                                                                                                                   |
+| `src/app/(app)/loads/[id]/edit/form-state.ts`      | `EditState`, `initialEditState`.                                                                                                                                                                                    |
+| `src/app/(app)/loads/[id]/edit/edit-form.test.tsx` | Render test pinning every `name` the action reads.                                                                                                                                                                  |
+| `src/app/(app)/loads/edit-flow.test.ts`            | Intake a fixture, then edit it, against real adapters and real Postgres.                                                                                                                                            |
 
 **Modified**
 
-| File | Change |
-| --- | --- |
-| `src/domain/details.ts` | `loadEditChangeSchema`, `loadEditSchema`, and `edits` on `loadDetailsSchema`. |
-| `src/domain/load/load.ts` | `LoadUpdate` (a `NewLoad` with `status` required) and `StopWrite`. |
-| `src/domain/ports/repositories.ts` | `LoadRepository.update`, `PartyRepository.update`. |
-| `src/db/repositories/loads.ts` | Implement `update`. |
-| `src/db/repositories/parties.ts` | Implement `update`. |
-| `src/db/repositories/loads.test.ts` | Cases for both new methods. |
-| `src/domain/intake/confirm.ts` | Build `confirmedLoadSchema` from `loadValuesSchema`; drop the duplicated helpers. |
-| `src/domain/intake/confirm.test.ts` | Import the fakes from `@/test/fakes`. |
-| `src/app/(app)/loads/review-form.tsx` | Use the extracted `Field`. |
-| `src/app/(app)/loads/form-values.ts` | Extract `readLoadValues`; add `readEditedLoad`. |
-| `src/app/(app)/loads/form-values.test.ts` | Cases for `readEditedLoad`. |
-| `src/app/(app)/loads/[id]/page.tsx` | "Edit load" link and the `EditNote` trail. |
-| `src/server/intake.ts` | Export `updateLoad`. |
-| `docs/load-intake.md` | The edit screen. |
-| `CLAUDE.md` | Replace the "editing is not built" entry with what is now true. |
+| File                                      | Change                                                                            |
+| ----------------------------------------- | --------------------------------------------------------------------------------- |
+| `src/domain/details.ts`                   | `loadEditChangeSchema`, `loadEditSchema`, and `edits` on `loadDetailsSchema`.     |
+| `src/domain/load/load.ts`                 | `LoadUpdate` (a `NewLoad` with `status` required) and `StopWrite`.                |
+| `src/domain/ports/repositories.ts`        | `LoadRepository.update`, `PartyRepository.update`.                                |
+| `src/db/repositories/loads.ts`            | Implement `update`.                                                               |
+| `src/db/repositories/parties.ts`          | Implement `update`.                                                               |
+| `src/db/repositories/loads.test.ts`       | Cases for both new methods.                                                       |
+| `src/domain/intake/confirm.ts`            | Build `confirmedLoadSchema` from `loadValuesSchema`; drop the duplicated helpers. |
+| `src/domain/intake/confirm.test.ts`       | Import the fakes from `@/test/fakes`.                                             |
+| `src/app/(app)/loads/review-form.tsx`     | Use the extracted `Field`.                                                        |
+| `src/app/(app)/loads/form-values.ts`      | Extract `readLoadValues`; add `readEditedLoad`.                                   |
+| `src/app/(app)/loads/form-values.test.ts` | Cases for `readEditedLoad`.                                                       |
+| `src/app/(app)/loads/[id]/page.tsx`       | "Edit load" link and the `EditNote` trail.                                        |
+| `src/server/intake.ts`                    | Export `updateLoad`.                                                              |
+| `docs/load-intake.md`                     | The edit screen.                                                                  |
+| `CLAUDE.md`                               | Replace the "editing is not built" entry with what is now true.                   |
 
 ---
 
@@ -71,11 +71,13 @@
 Lift the stated-value schemas and the value-to-storage translation out of `src/domain/intake/confirm.ts` so the edit use case shares them instead of copying them. No behaviour changes; the existing suite is the regression test.
 
 **Files:**
+
 - Create: `src/domain/load/load-values.ts`
 - Create: `src/domain/load/load-values.test.ts`
 - Modify: `src/domain/intake/confirm.ts`
 
 **Interfaces:**
+
 - Consumes: `Party`, `NewStop`, `StopType` from `../load/load`; `parseEquipmentType` from `../load/equipment`; `CarrierRepository` from `../ports/repositories`; `BrokerageScope` from `../tenancy`.
 - Produces: `stopValuesSchema`, `loadValuesSchema`, `StopValues`, `LoadValues`, `nullableText`, `STOP_TYPE_FOR`, `toNewStop(stop, sequence, party)`, `classifyEquipment(equipment)`, `findCarrier(scope, carriers, values)`. `confirm.ts` keeps exporting `confirmedStopSchema`, `confirmedLoadSchema`, `ConfirmedStop`, `ConfirmedLoad` under the same names.
 
@@ -144,7 +146,9 @@ describe("loadValuesSchema", () => {
   it("refuses a date or time that is not wall-clock notation", () => {
     expect(stopValuesSchema.safeParse(stop({ date: "11/02/2026" })).success).toBe(false);
     expect(stopValuesSchema.safeParse(stop({ windowStart: "8am" })).success).toBe(false);
-    expect(stopValuesSchema.safeParse(stop({ windowStart: "24:00" })).success).toBe(false);
+    expect(stopValuesSchema.safeParse(stop({ windowStart: "24:00" })).success).toBe(
+      false,
+    );
   });
 
   it("requires a name on every stop, because a stop is a place", () => {
@@ -353,11 +357,11 @@ export const confirmedLoadSchema = loadValuesSchema.extend({
 and replace the stop loop inside `createConfirmDraft` with:
 
 ```ts
-    const stops: NewStop[] = [];
-    for (const [index, stop] of confirmed.stops.entries()) {
-      const party = await resolveParty(scope, parties, stop);
-      stops.push(toNewStop(stop, index, party));
-    }
+const stops: NewStop[] = [];
+for (const [index, stop] of confirmed.stops.entries()) {
+  const party = await resolveParty(scope, parties, stop);
+  stops.push(toNewStop(stop, index, party));
+}
 ```
 
 Keep `resolveParty`, `inferStatus` and the `loads.create` call exactly as they are. Keep the module's doc comment and the `CoveredTextSource` check.
@@ -383,10 +387,12 @@ git commit -m "refactor: share the stated-value schemas between intake and editi
 ### Task 2: The edit record on `details`
 
 **Files:**
+
 - Modify: `src/domain/details.ts`
 - Create: `src/domain/details.test.ts`
 
 **Interfaces:**
+
 - Produces: `loadEditChangeSchema`, `loadEditSchema`, `LoadEditChange`, `LoadEdit`, and `edits?: LoadEdit[]` on `LoadDetails`.
 
 - [ ] **Step 1: Write the failing test**
@@ -520,10 +526,12 @@ git commit -m "feat: validate an edit trail on a load's details column"
 The fakes are currently inline in `confirm.test.ts`. The edit use case needs the same three, plus the two new methods. Lifting them out is what stops a second copy drifting from the ports.
 
 **Files:**
+
 - Create: `src/test/fakes.ts`
 - Modify: `src/domain/intake/confirm.test.ts`
 
 **Interfaces:**
+
 - Produces: `fakeParties(seed?)`, `fakeLoads(seed?)`, `fakeCarriers(seed?)`, each returning `{ repo, rows }` (`fakeLoads` also returns `stopRows`).
 
 - [ ] **Step 1: Create the module**
@@ -665,12 +673,14 @@ git commit -m "test: share the in-memory repository fakes"
 ### Task 4: `LoadRepository.update`
 
 **Files:**
+
 - Modify: `src/domain/load/load.ts`
 - Modify: `src/domain/ports/repositories.ts`
 - Modify: `src/db/repositories/loads.ts`
 - Test: `src/db/repositories/loads.test.ts`
 
 **Interfaces:**
+
 - Produces: `LoadUpdate`, `StopWrite` in `src/domain/load/load.ts`; `LoadRepository.update(scope, id, input: LoadUpdate, stops: readonly StopWrite[]): Promise<LoadWithStops | null>`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -678,161 +688,161 @@ git commit -m "test: share the in-memory repository fakes"
 Append to the `describe("load repository")` block in `src/db/repositories/loads.test.ts`:
 
 ```ts
-  it("updates a load's fields and keeps the ones it was not given", async () => {
-    await withRollback(async (tx) => {
-      const scope = await seedBrokerage(tx);
-      const parties = createPartyRepository(tx);
-      const loads = createLoadRepository(tx);
+it("updates a load's fields and keeps the ones it was not given", async () => {
+  await withRollback(async (tx) => {
+    const scope = await seedBrokerage(tx);
+    const parties = createPartyRepository(tx);
+    const loads = createLoadRepository(tx);
 
-      const party = await parties.create(scope, { name: "ACME DISTRIBUTION" });
-      const created = await loads.create(
-        scope,
+    const party = await parties.create(scope, { name: "ACME DISTRIBUTION" });
+    const created = await loads.create(
+      scope,
+      {
+        referenceNumber: "884213",
+        status: "booked",
+        carrierPayCents: 185_000,
+        customerRateCents: 210_000,
+      },
+      [{ sequence: 0, type: "pickup", partyId: party.id }],
+    );
+
+    const updated = await loads.update(
+      scope,
+      created.load.id,
+      {
+        referenceNumber: "884213",
+        status: created.load.status,
+        carrierPayCents: 190_000,
+        customerRateCents: created.load.customerRateCents,
+      },
+      [{ id: created.stops[0].id, sequence: 0, type: "pickup", partyId: party.id }],
+    );
+
+    expect(updated?.load.carrierPayCents).toBe(190_000);
+    // Status is not this feature's to change, and the customer rate is not on
+    // the edit form at all. Both have to survive a save that omits them.
+    expect(updated?.load.status).toBe("booked");
+    expect(updated?.load.customerRateCents).toBe(210_000);
+  });
+});
+
+it("keeps a stop's id and creation time across an edit", async () => {
+  await withRollback(async (tx) => {
+    const scope = await seedBrokerage(tx);
+    const parties = createPartyRepository(tx);
+    const loads = createLoadRepository(tx);
+
+    const party = await parties.create(scope, { name: "ACME DISTRIBUTION" });
+    const created = await loads.create(scope, { referenceNumber: "884213" }, [
+      { sequence: 0, type: "pickup", partyId: party.id, windowRawText: "PU 0800" },
+    ]);
+
+    const updated = await loads.update(
+      scope,
+      created.load.id,
+      { referenceNumber: "884213", status: "draft" },
+      [
         {
-          referenceNumber: "884213",
-          status: "booked",
-          carrierPayCents: 185_000,
-          customerRateCents: 210_000,
+          id: created.stops[0].id,
+          sequence: 0,
+          type: "pickup",
+          partyId: party.id,
+          opensAtLocal: "2026-11-02T09:00",
+          windowRawText: "PU 0800",
         },
-        [{ sequence: 0, type: "pickup", partyId: party.id }],
-      );
+      ],
+    );
 
-      const updated = await loads.update(
-        scope,
-        created.load.id,
-        {
-          referenceNumber: "884213",
-          status: created.load.status,
-          carrierPayCents: 190_000,
-          customerRateCents: created.load.customerRateCents,
-        },
-        [{ id: created.stops[0].id, sequence: 0, type: "pickup", partyId: party.id }],
-      );
-
-      expect(updated?.load.carrierPayCents).toBe(190_000);
-      // Status is not this feature's to change, and the customer rate is not on
-      // the edit form at all. Both have to survive a save that omits them.
-      expect(updated?.load.status).toBe("booked");
-      expect(updated?.load.customerRateCents).toBe(210_000);
-    });
+    expect(updated?.stops[0].id).toBe(created.stops[0].id);
+    expect(updated?.stops[0].opensAtLocal).toBe("2026-11-02T09:00");
+    // What the document said survives an edit to the parsed window.
+    expect(updated?.stops[0].windowRawText).toBe("PU 0800");
   });
+});
 
-  it("keeps a stop's id and creation time across an edit", async () => {
-    await withRollback(async (tx) => {
-      const scope = await seedBrokerage(tx);
-      const parties = createPartyRepository(tx);
-      const loads = createLoadRepository(tx);
+it("swaps two stops without tripping the sequence constraint", async () => {
+  await withRollback(async (tx) => {
+    const scope = await seedBrokerage(tx);
+    const parties = createPartyRepository(tx);
+    const loads = createLoadRepository(tx);
 
-      const party = await parties.create(scope, { name: "ACME DISTRIBUTION" });
-      const created = await loads.create(scope, { referenceNumber: "884213" }, [
-        { sequence: 0, type: "pickup", partyId: party.id, windowRawText: "PU 0800" },
-      ]);
+    const first = await parties.create(scope, { name: "ACME DISTRIBUTION" });
+    const second = await parties.create(scope, { name: "LONE STAR FOODS" });
+    const created = await loads.create(scope, { referenceNumber: "884213" }, [
+      { sequence: 0, type: "pickup", partyId: first.id },
+      { sequence: 1, type: "delivery", partyId: second.id },
+    ]);
+    const [a, b] = created.stops;
 
-      const updated = await loads.update(
-        scope,
-        created.load.id,
-        { referenceNumber: "884213", status: "draft" },
-        [
-          {
-            id: created.stops[0].id,
-            sequence: 0,
-            type: "pickup",
-            partyId: party.id,
-            opensAtLocal: "2026-11-02T09:00",
-            windowRawText: "PU 0800",
-          },
-        ],
-      );
+    // stops_load_sequence_key is unique on (load_id, sequence): assigning
+    // final sequences directly collides on the first write.
+    const updated = await loads.update(
+      scope,
+      created.load.id,
+      { referenceNumber: "884213", status: "draft" },
+      [
+        { id: b.id, sequence: 0, type: "delivery", partyId: second.id },
+        { id: a.id, sequence: 1, type: "pickup", partyId: first.id },
+      ],
+    );
 
-      expect(updated?.stops[0].id).toBe(created.stops[0].id);
-      expect(updated?.stops[0].opensAtLocal).toBe("2026-11-02T09:00");
-      // What the document said survives an edit to the parsed window.
-      expect(updated?.stops[0].windowRawText).toBe("PU 0800");
-    });
+    expect(updated?.stops.map((stop) => stop.id)).toEqual([b.id, a.id]);
+    expect(updated?.stops.map((stop) => stop.sequence)).toEqual([0, 1]);
+
+    const found = await loads.findById(scope, created.load.id);
+    expect(found?.stops.map((stop) => stop.id)).toEqual([b.id, a.id]);
   });
+});
 
-  it("swaps two stops without tripping the sequence constraint", async () => {
-    await withRollback(async (tx) => {
-      const scope = await seedBrokerage(tx);
-      const parties = createPartyRepository(tx);
-      const loads = createLoadRepository(tx);
+it("deletes the stops an edit left out and inserts the ones it added", async () => {
+  await withRollback(async (tx) => {
+    const scope = await seedBrokerage(tx);
+    const parties = createPartyRepository(tx);
+    const loads = createLoadRepository(tx);
 
-      const first = await parties.create(scope, { name: "ACME DISTRIBUTION" });
-      const second = await parties.create(scope, { name: "LONE STAR FOODS" });
-      const created = await loads.create(scope, { referenceNumber: "884213" }, [
-        { sequence: 0, type: "pickup", partyId: first.id },
-        { sequence: 1, type: "delivery", partyId: second.id },
-      ]);
-      const [a, b] = created.stops;
+    const party = await parties.create(scope, { name: "ACME DISTRIBUTION" });
+    const created = await loads.create(scope, { referenceNumber: "884213" }, [
+      { sequence: 0, type: "pickup", partyId: party.id },
+      { sequence: 1, type: "delivery", partyId: party.id },
+    ]);
 
-      // stops_load_sequence_key is unique on (load_id, sequence): assigning
-      // final sequences directly collides on the first write.
-      const updated = await loads.update(
-        scope,
-        created.load.id,
-        { referenceNumber: "884213", status: "draft" },
-        [
-          { id: b.id, sequence: 0, type: "delivery", partyId: second.id },
-          { id: a.id, sequence: 1, type: "pickup", partyId: first.id },
-        ],
-      );
-
-      expect(updated?.stops.map((stop) => stop.id)).toEqual([b.id, a.id]);
-      expect(updated?.stops.map((stop) => stop.sequence)).toEqual([0, 1]);
-
-      const found = await loads.findById(scope, created.load.id);
-      expect(found?.stops.map((stop) => stop.id)).toEqual([b.id, a.id]);
-    });
-  });
-
-  it("deletes the stops an edit left out and inserts the ones it added", async () => {
-    await withRollback(async (tx) => {
-      const scope = await seedBrokerage(tx);
-      const parties = createPartyRepository(tx);
-      const loads = createLoadRepository(tx);
-
-      const party = await parties.create(scope, { name: "ACME DISTRIBUTION" });
-      const created = await loads.create(scope, { referenceNumber: "884213" }, [
-        { sequence: 0, type: "pickup", partyId: party.id },
+    const updated = await loads.update(
+      scope,
+      created.load.id,
+      { referenceNumber: "884213", status: "draft" },
+      [
+        { id: created.stops[1].id, sequence: 0, type: "delivery", partyId: party.id },
         { sequence: 1, type: "delivery", partyId: party.id },
-      ]);
+      ],
+    );
 
-      const updated = await loads.update(
-        scope,
+    expect(updated?.stops).toHaveLength(2);
+    expect(updated?.stops[0].id).toBe(created.stops[1].id);
+    expect(updated?.stops[1].id).not.toBe(created.stops[0].id);
+  });
+});
+
+it("will not update another brokerage's load", async () => {
+  await withRollback(async (tx) => {
+    const mine = await seedBrokerage(tx, "Mine");
+    const theirs = await seedBrokerage(tx, "Theirs");
+    const loads = createLoadRepository(tx);
+
+    const created = await loads.create(theirs, { referenceNumber: "884213" }, []);
+
+    expect(
+      await loads.update(
+        mine,
         created.load.id,
-        { referenceNumber: "884213", status: "draft" },
-        [
-          { id: created.stops[1].id, sequence: 0, type: "delivery", partyId: party.id },
-          { sequence: 1, type: "delivery", partyId: party.id },
-        ],
-      );
+        { referenceNumber: "hijacked", status: "cancelled" },
+        [],
+      ),
+    ).toBeNull();
 
-      expect(updated?.stops).toHaveLength(2);
-      expect(updated?.stops[0].id).toBe(created.stops[1].id);
-      expect(updated?.stops[1].id).not.toBe(created.stops[0].id);
-    });
+    const found = await loads.findById(theirs, created.load.id);
+    expect(found?.load.referenceNumber).toBe("884213");
   });
-
-  it("will not update another brokerage's load", async () => {
-    await withRollback(async (tx) => {
-      const mine = await seedBrokerage(tx, "Mine");
-      const theirs = await seedBrokerage(tx, "Theirs");
-      const loads = createLoadRepository(tx);
-
-      const created = await loads.create(theirs, { referenceNumber: "884213" }, []);
-
-      expect(
-        await loads.update(
-          mine,
-          created.load.id,
-          { referenceNumber: "hijacked", status: "cancelled" },
-          [],
-        ),
-      ).toBeNull();
-
-      const found = await loads.findById(theirs, created.load.id);
-      expect(found?.load.referenceNumber).toBe("884213");
-    });
-  });
+});
 ```
 
 - [ ] **Step 2: Run them to make sure they fail**
@@ -977,7 +987,7 @@ In `src/db/repositories/loads.ts`, widen the drizzle import to `import { and, as
 Run: `npx vitest run src/db/repositories/loads.test.ts`
 Expected: PASS, 18 tests (13 existing + 5 new).
 
-If the sequence-swap test fails with `duplicate key value violates unique constraint "stops_load_sequence_key"`, the negative-range pass is wrong: check that the final `UPDATE` matches only rows with `sequence < 0`, and that an *inserted* row also lands negative.
+If the sequence-swap test fails with `duplicate key value violates unique constraint "stops_load_sequence_key"`, the negative-range pass is wrong: check that the final `UPDATE` matches only rows with `sequence < 0`, and that an _inserted_ row also lands negative.
 
 - [ ] **Step 7: Commit**
 
@@ -991,11 +1001,13 @@ git commit -m "feat: let a load's fields and route be rewritten"
 ### Task 5: `PartyRepository.update`
 
 **Files:**
+
 - Modify: `src/domain/ports/repositories.ts`
 - Modify: `src/db/repositories/parties.ts`
 - Test: `src/db/repositories/loads.test.ts` (the `describe("party repository")` block)
 
 **Interfaces:**
+
 - Produces: `PartyRepository.update(scope, id, input: NewParty): Promise<Party | null>`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -1003,52 +1015,52 @@ git commit -m "feat: let a load's fields and route be rewritten"
 Append to the `describe("party repository")` block in `src/db/repositories/loads.test.ts`:
 
 ```ts
-  it("corrects a facility in place, for every load that touches it", async () => {
-    await withRollback(async (tx) => {
-      const scope = await seedBrokerage(tx);
-      const parties = createPartyRepository(tx);
+it("corrects a facility in place, for every load that touches it", async () => {
+  await withRollback(async (tx) => {
+    const scope = await seedBrokerage(tx);
+    const parties = createPartyRepository(tx);
 
-      const created = await parties.create(scope, {
-        name: "ACME DISTRIBUTION",
-        addressLine1: "4400 Navigation Blvd",
-        city: "Houston",
-        region: "TX",
-        postalCode: "77011",
-        timeZone: "America/Chicago",
-      });
-
-      const updated = await parties.update(scope, created.id, {
-        name: "ACME DISTRIBUTION",
-        addressLine1: "4400 Navigation Blvd",
-        city: "Houston",
-        region: "TX",
-        postalCode: "77012",
-        timeZone: created.timeZone,
-      });
-
-      expect(updated?.id).toBe(created.id);
-      expect(updated?.postalCode).toBe("77012");
-      // The facility's zone is not the edit screen's to guess at, so a caller
-      // that passes it back unchanged must get it back unchanged.
-      expect(updated?.timeZone).toBe("America/Chicago");
-
-      const found = await parties.findById(scope, created.id);
-      expect(found?.postalCode).toBe("77012");
+    const created = await parties.create(scope, {
+      name: "ACME DISTRIBUTION",
+      addressLine1: "4400 Navigation Blvd",
+      city: "Houston",
+      region: "TX",
+      postalCode: "77011",
+      timeZone: "America/Chicago",
     });
-  });
 
-  it("will not update another brokerage's facility", async () => {
-    await withRollback(async (tx) => {
-      const mine = await seedBrokerage(tx, "Mine");
-      const theirs = await seedBrokerage(tx, "Theirs");
-      const parties = createPartyRepository(tx);
-
-      const created = await parties.create(theirs, { name: "LONE STAR FOODS" });
-
-      expect(await parties.update(mine, created.id, { name: "HIJACKED" })).toBeNull();
-      expect((await parties.findById(theirs, created.id))?.name).toBe("LONE STAR FOODS");
+    const updated = await parties.update(scope, created.id, {
+      name: "ACME DISTRIBUTION",
+      addressLine1: "4400 Navigation Blvd",
+      city: "Houston",
+      region: "TX",
+      postalCode: "77012",
+      timeZone: created.timeZone,
     });
+
+    expect(updated?.id).toBe(created.id);
+    expect(updated?.postalCode).toBe("77012");
+    // The facility's zone is not the edit screen's to guess at, so a caller
+    // that passes it back unchanged must get it back unchanged.
+    expect(updated?.timeZone).toBe("America/Chicago");
+
+    const found = await parties.findById(scope, created.id);
+    expect(found?.postalCode).toBe("77012");
   });
+});
+
+it("will not update another brokerage's facility", async () => {
+  await withRollback(async (tx) => {
+    const mine = await seedBrokerage(tx, "Mine");
+    const theirs = await seedBrokerage(tx, "Theirs");
+    const parties = createPartyRepository(tx);
+
+    const created = await parties.create(theirs, { name: "LONE STAR FOODS" });
+
+    expect(await parties.update(mine, created.id, { name: "HIJACKED" })).toBeNull();
+    expect((await parties.findById(theirs, created.id))?.name).toBe("LONE STAR FOODS");
+  });
+});
 ```
 
 - [ ] **Step 2: Run them to make sure they fail**
@@ -1116,10 +1128,12 @@ git commit -m "feat: let a facility be corrected in place"
 ### Task 6: The edit use case
 
 **Files:**
+
 - Create: `src/domain/load/update.ts`
 - Create: `src/domain/load/update.test.ts`
 
 **Interfaces:**
+
 - Consumes: `fakeCarriers`, `fakeLoads`, `fakeParties` from `@/test/fakes`; everything Task 1 produced; `LoadEdit`, `LoadEditChange` from `../details`.
 - Produces: `editedStopSchema`, `editedLoadSchema`, `EditedStop`, `EditedLoad`, `UpdateLoadDeps`, `UpdateOutcome`, `UpdateLoad`, `createUpdateLoad`.
 
@@ -1221,12 +1235,10 @@ async function given(carriers = fakeCarriers()) {
     weightLbs: 42000,
     equipment: "53' Dry Van",
     carrierRateCents: 185_000,
-    stops: saved.stops.map(
-      (stop, index): EditedStop => ({
-        id: stop.id,
-        ...confirmed().stops[index],
-      }),
-    ),
+    stops: saved.stops.map((stop, index): EditedStop => ({
+      id: stop.id,
+      ...confirmed().stops[index],
+    })),
   });
 
   return { update, loads, parties, carriers, saved, unchanged };
@@ -1659,12 +1671,10 @@ export function createUpdateLoad({
     }
 
     const changes = diff(before, edited);
-    const edits = changes.length === 0
-      ? current.load.details.edits
-      : [
-          ...(current.load.details.edits ?? []),
-          { at: now().toISOString(), changes },
-        ];
+    const edits =
+      changes.length === 0
+        ? current.load.details.edits
+        : [...(current.load.details.edits ?? []), { at: now().toISOString(), changes }];
 
     const saved = await loads.update(
       scope,
@@ -1913,10 +1923,12 @@ git commit -m "feat: edit a saved load, recording what each save changed"
 ### Task 7: Extract the field component
 
 **Files:**
+
 - Create: `src/app/(app)/loads/field.tsx`
 - Modify: `src/app/(app)/loads/review-form.tsx`
 
 **Interfaces:**
+
 - Produces: `Field({ name, label, defaultValue, type?, required?, hint?, flag?, sourceText? })` and `truncate(text, limit?)`.
 
 The review screen's render tests are the regression check: the markup must not change.
@@ -2063,10 +2075,12 @@ git commit -m "refactor: share the editable field between review and editing"
 ### Task 8: Read the edit form's submission
 
 **Files:**
+
 - Modify: `src/app/(app)/loads/form-values.ts`
 - Test: `src/app/(app)/loads/form-values.test.ts`
 
 **Interfaces:**
+
 - Produces: `readEditedLoad(formData): EditReadResult` where `EditReadResult = { ok: true; edited: EditedLoad } | { ok: false; message: string }`.
 
 - [ ] **Step 1: Write the failing test**
@@ -2232,6 +2246,7 @@ git commit -m "feat: read the edit form's submission"
 ### Task 9: The edit screen
 
 **Files:**
+
 - Create: `src/app/(app)/loads/[id]/edit/form-state.ts`
 - Create: `src/app/(app)/loads/[id]/edit/actions.ts`
 - Create: `src/app/(app)/loads/[id]/edit/edit-form.tsx`
@@ -2240,6 +2255,7 @@ git commit -m "feat: read the edit form's submission"
 - Modify: `src/server/intake.ts`
 
 **Interfaces:**
+
 - Consumes: `readEditedLoad` (task 8), `Field` (task 7), `createUpdateLoad` (task 6).
 - Produces: `updateLoad` from `@/server/intake`; `editLoadAction`; `EditState`, `initialEditState`; `EditForm({ load, stops, parties, carrier })`.
 
@@ -2270,8 +2286,7 @@ Create `src/app/(app)/loads/[id]/edit/form-state.ts`:
  * project has shipped it once already.
  */
 export type EditState =
-  | { readonly status: "idle" }
-  | { readonly status: "error"; readonly message: string };
+  { readonly status: "idle" } | { readonly status: "error"; readonly message: string };
 
 export const initialEditState: EditState = { status: "idle" };
 ```
@@ -2534,7 +2549,8 @@ function StopFields({
   onRemove: () => void;
 }) {
   const stop = row.stop;
-  const date = stop?.opensAtLocal?.slice(0, 10) ?? stop?.closesAtLocal?.slice(0, 10) ?? "";
+  const date =
+    stop?.opensAtLocal?.slice(0, 10) ?? stop?.closesAtLocal?.slice(0, 10) ?? "";
 
   return (
     <fieldset className={styles.stopCard}>
@@ -2575,7 +2591,11 @@ function StopFields({
         />
         <Field name="stop.city" label="City" defaultValue={party?.city ?? ""} />
         <Field name="stop.state" label="State" defaultValue={party?.region ?? ""} />
-        <Field name="stop.postalCode" label="ZIP" defaultValue={party?.postalCode ?? ""} />
+        <Field
+          name="stop.postalCode"
+          label="ZIP"
+          defaultValue={party?.postalCode ?? ""}
+        />
         <Field name="stop.date" label="Date" defaultValue={date} type="date" />
         <Field
           name="stop.windowStart"
@@ -2722,7 +2742,10 @@ const load: Load = {
   customerRateCents: 210_000,
   carrierPayCents: 185_000,
   carrierId: "carrier-1",
-  details: { equipmentAsWritten: "53' Dry Van", carrierAsWritten: "GULF COAST HAULING LLC" },
+  details: {
+    equipmentAsWritten: "53' Dry Van",
+    carrierAsWritten: "GULF COAST HAULING LLC",
+  },
 };
 
 const stop: Stop = {
@@ -2865,9 +2888,11 @@ git commit -m "feat: add the load edit screen"
 ### Task 10: The way in, and the trail
 
 **Files:**
+
 - Modify: `src/app/(app)/loads/[id]/page.tsx`
 
 **Interfaces:**
+
 - Consumes: `LoadEdit` from `@/domain/details`.
 
 - [ ] **Step 1: Add the link and the trail**
@@ -2877,17 +2902,19 @@ In `src/app/(app)/loads/[id]/page.tsx`, add `LoadEdit` to the type import from `
 Inside the `<header>`'s `cardHeader` div, after `<StatusBadge />`:
 
 ```tsx
-          <Link href={`/loads/${load.id}/edit`} className={styles.inlineLink}>
-            Edit load
-          </Link>
+<Link href={`/loads/${load.id}/edit`} className={styles.inlineLink}>
+  Edit load
+</Link>
 ```
 
 After the existing `{load.details.intake && <IntakeNote … />}` line:
 
 ```tsx
-      {load.details.edits && load.details.edits.length > 0 && (
-        <EditNote edits={load.details.edits} />
-      )}
+{
+  load.details.edits && load.details.edits.length > 0 && (
+    <EditNote edits={load.details.edits} />
+  );
+}
 ```
 
 And the component, beside `IntakeNote`:
@@ -2965,9 +2992,11 @@ git commit -m "feat: show the edit trail and link to the edit screen"
 The failure this project actually hits is a layer written and never wired. Every piece above is covered on its own; this is the test that they are connected.
 
 **Files:**
+
 - Create: `src/app/(app)/loads/edit-flow.test.ts`
 
 **Interfaces:**
+
 - Consumes: `readConfirmedLoad`, `readEditedLoad`; the real repositories; `createConfirmDraft`, `createUpdateLoad`; `seedBrokerage`, `withRollback`.
 
 - [ ] **Step 1: Write the test**
@@ -3124,7 +3153,8 @@ function editForm(
 
 async function savedLoad(tx: DbExecutor, scope: BrokerageScope) {
   const outcome = await wire(tx).confirm(scope, confirmedLoad());
-  if (outcome.status !== "saved") throw new Error(`expected a save, got ${outcome.status}`);
+  if (outcome.status !== "saved")
+    throw new Error(`expected a save, got ${outcome.status}`);
   return outcome;
 }
 
@@ -3202,9 +3232,7 @@ describe("editing a load, end to end", () => {
       const saved = await savedLoad(tx, scope);
       const { update, loads } = wire(tx);
 
-      const read = readEditedLoad(
-        editForm([[saved.stops[1].id, DELIVERY_ROW]]),
-      );
+      const read = readEditedLoad(editForm([[saved.stops[1].id, DELIVERY_ROW]]));
       if (!read.ok) throw new Error(read.message);
 
       const outcome = await update(scope, saved.load.id, read.edited);
@@ -3273,6 +3301,7 @@ git commit -m "test: drive intake and editing end to end against Postgres"
 A green suite says nothing about render time. Both bugs this module has actually had — the `"use server"` export and the carrier name-mismatch gap — were found here and by nothing else.
 
 **Files:**
+
 - Modify: `docs/load-intake.md`
 - Modify: `CLAUDE.md`
 - Create: `docs/images/` screenshots as needed
@@ -3319,7 +3348,7 @@ In "Deliberately not built yet", replace the "Editing or deleting a saved load" 
 And in "Current state", after the four things worth knowing about intake, add:
 
 ```markdown
-- **A saved load can be edited, and says what changed.** `/loads/[id]/edit` rewrites the load, its route, and the facilities behind its stops. Each save appends `{at, changes}` to `details.edits`, which the load page renders — a rate con is an agreement, so "did the carrier pay always say $1,850?" is a question that gets asked. The trail is a sibling of `details.intake`, never part of it: `intake.corrections` is evidence about the *parser*, and diluting it with edits made days later would corrupt the only data the confidence scale can be calibrated from. Correcting a stop's address fixes the shared `Party`, so it is right on every load that touches that dock; retyping the name points the stop at a different facility instead, and never renames one other loads depend on
+- **A saved load can be edited, and says what changed.** `/loads/[id]/edit` rewrites the load, its route, and the facilities behind its stops. Each save appends `{at, changes}` to `details.edits`, which the load page renders — a rate con is an agreement, so "did the carrier pay always say $1,850?" is a question that gets asked. The trail is a sibling of `details.intake`, never part of it: `intake.corrections` is evidence about the _parser_, and diluting it with edits made days later would corrupt the only data the confidence scale can be calibrated from. Correcting a stop's address fixes the shared `Party`, so it is right on every load that touches that dock; retyping the name points the stop at a different facility instead, and never renames one other loads depend on
 ```
 
 - [ ] **Step 7: Final verification**
@@ -3371,6 +3400,6 @@ BODY
 
 - **Deleting a load.** Not in the spec, not asked for.
 - **Setting status by hand.** Decided against; the consequence is documented.
-- **`customerRateCents` on the edit form.** The edit use case *preserves* it, and no screen sets it. This is the first screen that plausibly could — it is the broker's own number, which no document states, and margin depends on it. Out of scope here because the spec did not call for it; worth raising as its own small change.
+- **`customerRateCents` on the edit form.** The edit use case _preserves_ it, and no screen sets it. This is the first screen that plausibly could — it is the broker's own number, which no document states, and margin depends on it. Out of scope here because the spec did not call for it; worth raising as its own small change.
 - **A `load_revisions` table.** `details.edits` answers "what changed and when". Point-in-time reconstruction is a later, separate decision, and the data to seed it starts accumulating with the first edit.
 - **Editing a facility outside a load.** A facilities screen is its own surface, and it is also the fix for per-stop time zones.
