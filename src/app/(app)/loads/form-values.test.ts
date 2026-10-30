@@ -429,6 +429,6 @@ describe("readEditedLoad", () => {
     const read = readEditedLoad(formData);
     expect(read.ok).toBe(false);
     if (read.ok) return;
-    expect(read.message).toBe("A load needs at least one stop");
+    expect(read.message).toBe("A load needs at least one stop.");
   });
 });

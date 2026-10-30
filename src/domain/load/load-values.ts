@@ -59,7 +59,7 @@ export const loadValuesSchema = z.object({
   /** Free text, as stated. Classified by `classifyEquipment`, never discarded. */
   equipment: nullableText,
   carrierRateCents: z.number().int().nullable(),
-  stops: z.array(stopValuesSchema).min(1, "A load needs at least one stop"),
+  stops: z.array(stopValuesSchema).min(1, "A load needs at least one stop."),
 });
 
 export type StopValues = z.infer<typeof stopValuesSchema>;

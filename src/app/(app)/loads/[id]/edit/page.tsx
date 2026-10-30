@@ -3,10 +3,18 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import type { Party } from "@/domain/load/load";
 import { carrierRepository } from "@/server/carriers";
-import { loadRepository, partyRepository } from "@/server/intake";
+import { partyRepository } from "@/server/intake";
 import { requireBrokerage } from "@/server/tenant";
 import styles from "../../../../ui.module.css";
+import { loadForPage } from "../load-page-data";
 import { EditForm } from "./edit-form";
+
+/** Matches the heading, so a tab mid-edit is tellable from the load itself. */
+export async function generateMetadata({ params }: PageProps<"/loads/[id]/edit">) {
+  const { id } = await params;
+  const found = await loadForPage(id);
+  return { title: found ? `Edit load ${found.load.referenceNumber}` : "Edit load" };
+}
 
 export default function EditLoadPage({ params }: PageProps<"/loads/[id]/edit">) {
   return (
@@ -23,8 +31,8 @@ async function EditLoad({ params }: { params: PageProps<"/loads/[id]/edit">["par
   const scope = await requireBrokerage();
 
   // Scoped read: another brokerage's load is indistinguishable from one that
-  // does not exist.
-  const found = await loadRepository.findById(scope, id);
+  // does not exist. Shared with `generateMetadata` above.
+  const found = await loadForPage(id);
   if (!found) notFound();
 
   const { load, stops } = found;

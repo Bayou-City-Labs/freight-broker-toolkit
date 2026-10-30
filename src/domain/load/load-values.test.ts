@@ -42,7 +42,7 @@ describe("loadValuesSchema", () => {
     const parsed = loadValuesSchema.safeParse(values({ stops: [] }));
     expect(parsed.success).toBe(false);
     if (parsed.success) return;
-    expect(parsed.error.issues[0].message).toBe("A load needs at least one stop");
+    expect(parsed.error.issues[0].message).toBe("A load needs at least one stop.");
   });
 
   it("refuses a load with no reference number", () => {

@@ -48,7 +48,7 @@ export const editedStopSchema = stopValuesSchema.extend({
 // `.extend` replaces the stops field wholesale, so the "at least one" rule has
 // to be restated rather than inherited.
 export const editedLoadSchema = loadValuesSchema.extend({
-  stops: z.array(editedStopSchema).min(1, "A load needs at least one stop"),
+  stops: z.array(editedStopSchema).min(1, "A load needs at least one stop."),
 });
 
 export type EditedStop = z.infer<typeof editedStopSchema>;

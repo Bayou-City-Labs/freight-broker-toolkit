@@ -5,9 +5,10 @@ import type { IntakeProvenance } from "@/domain/details";
 import { carrierNameMatches } from "@/domain/load/carrier-name";
 import type { Party, Stop } from "@/domain/load/load";
 import { carrierRepository } from "@/server/carriers";
-import { loadRepository, partyRepository } from "@/server/intake";
+import { partyRepository } from "@/server/intake";
 import { requireBrokerage } from "@/server/tenant";
 import styles from "../../../ui.module.css";
+import { loadForPage } from "./load-page-data";
 import {
   EditNote,
   formatEquipment,
@@ -17,6 +18,16 @@ import {
   StatusBadge,
   stopTypeLabel,
 } from "../ui";
+
+/**
+ * Names the load in the browser tab. Two loads open side by side both read
+ * "Freight Broker Toolkit" otherwise.
+ */
+export async function generateMetadata({ params }: PageProps<"/loads/[id]">) {
+  const { id } = await params;
+  const found = await loadForPage(id);
+  return { title: found ? `Load ${found.load.referenceNumber}` : "Load" };
+}
 
 export default function LoadDetailPage({ params }: PageProps<"/loads/[id]">) {
   return (
@@ -36,8 +47,9 @@ async function LoadDetail({ params }: { params: PageProps<"/loads/[id]">["params
   const scope = await requireBrokerage();
 
   // Scoped read: a load belonging to another brokerage is indistinguishable
-  // from one that does not exist.
-  const found = await loadRepository.findById(scope, id);
+  // from one that does not exist. Shared with `generateMetadata` above, so the
+  // tab title does not cost a second query.
+  const found = await loadForPage(id);
   if (!found) notFound();
 
   const { load, stops } = found;
