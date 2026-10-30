@@ -131,9 +131,11 @@ new number. **Edit load** on the load page opens the same fields again.
 
 ![The edit screen, every field prefilled from the saved load, with a line stating the status will not change](./images/load-edit-screen.jpg)
 
-Any field, the whole route — add a stop, remove one, reorder them — and the
-address of the facility behind each stop. Three things are worth knowing
-before you use it:
+Any field, the whole route — add a stop, remove one — and the address of the
+facility behind each stop. There is no move control: reordering means retyping
+the rows into each other, which the trail then reports field by field, or
+removing a stop and adding it back, which it reports as one stop leaving the
+route and another joining. Three things are worth knowing before you use it:
 
 - **Correcting an address fixes the facility everywhere.** The address lives on
   the shared `Party` row, not on the stop, so a wrong ZIP is wrong on every
@@ -168,12 +170,15 @@ The timestamp is an instant in **CT**, where a dock window is wall time with no
 zone at all. That asymmetry is deliberate: an edit happened at a knowable
 moment, and a rate con's `0800` does not say which clock it means.
 
-A trail that lies is worse than no trail, because it gets believed. Two things
-it will not claim: a date you type with no time alongside it is not storable
-today, so it is not reported as saved; and the carrier link is reported in
-either direction, because the difference between "this carrier's authority and
-insurance were checked" and "nobody checked" is the one change that must never
-be silent.
+A trail that lies is worse than no trail, because it gets believed. So: a date
+you type with no time alongside it is not storable today, and is not reported
+as saved. The facility lines state the dock **as stored**, not as typed — so
+retyping a name in a different case reports nothing, because nothing is
+renamed, and pointing a stop at a dock you already hold reports the address it
+actually adopted rather than the boxes you cleared. And the carrier link is
+reported in either direction, because the difference between "this carrier's
+authority and insurance were checked" and "nobody checked" is the one change
+that must never be silent.
 
 ## 6. Looking at documents without the UI
 

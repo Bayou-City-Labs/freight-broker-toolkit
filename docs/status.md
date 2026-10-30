@@ -1,6 +1,6 @@
 # Status: not built yet, next session
 
-> WARNING: carried over from CLAUDE.md and known to be stale. For example, OCR is being built now, so "OCR" below is out of date. Verify against the code and update this file as work lands.
+> WARNING: this file is a running note, not a source of truth. Verify any claim against the code before building on it, and update this file as work lands. (It previously said OCR was being built; it is not — `tesseract.js` is not even a dependency. Only scan _detection_ exists, which is what the OCR entry below says.)
 
 Deliberately not built yet
 A Document repository — that table exists, but its access patterns belong to document generation. Load and Party repositories are built; intake was the real module they were waiting for

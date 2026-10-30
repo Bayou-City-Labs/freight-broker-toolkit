@@ -1,6 +1,5 @@
 # Architecture: stack, foundation decisions, entities, layout
 
-
 Stack
 Decisions settled in the first session; see "Foundation decisions" below for the reasoning that is not obvious from the code.
 
@@ -19,7 +18,7 @@ The non-obvious ones, with the reasoning. Revisit these deliberately, not by acc
 Money is integer cents (src/domain/money.ts). Margin is the difference between two amounts; rounding drift there is a defect in the number the business runs on. Per-mile figures need sub-cent precision and are derived for display, never stored as money.
 Windows are naive local wall time + IANA zone + the raw source text (src/domain/time-window.ts). A rate con states a dock's wall clock and rarely a zone. Converting to an instant at intake bakes in an unauditable guess. DST gaps resolve forward, overlaps resolve to the first occurrence.
 Routing is Load → ordered Stop[] → Party, not shipper/consignee foreign keys. Multi-stop and drayage are then the same shape with more rows instead of a migration.
-Uncertain fields live in a zod-validated jsonb details column (src/domain/details.ts). Promote a field to a real column when you start querying, sorting, or filtering on it.
+Uncertain fields live in a jsonb details column (src/domain/details.ts), validated on the way in — the form boundary parses confirmedLoadSchema and editedLoadSchema, and every writer builds the column in typed server code. Reads are a compile-time cast, not a parse: toLoad hands row.details straight out, so loadDetailsSchema is a contract for input and a type for output. Promote a field to a real column when you start querying, sorting, or filtering on it.
 Carrier checks store the raw payload, a derived projection, and a content hash. The hash makes Phase 3 monitoring a cheap diff; the raw payload means verdicts can be re-derived when rules change. Verdicts are stamped with CARRIER_RULESET_VERSION.
 Tenancy is enforced at the repository boundary, not by convention and not yet by RLS. Repository methods take a BrokerageScope first argument, so a call cannot be made without one. src/server/tenant.ts is the single place a scope enters the system.
 The domain boundary is enforced by lint, not discipline: src/domain/** cannot import Next.js, React, Drizzle, postgres.js, Auth.js, or the app/db/env layers. That is what makes extracting it into a shared package later a cheap move.
