@@ -2,6 +2,7 @@ import { createConfirmDraft } from "@/domain/intake/confirm";
 import { createLabelParser } from "@/domain/intake/label-parser";
 import { createIntakePipeline } from "@/domain/intake/pipeline";
 import { createPlainTextExtractor } from "@/domain/intake/plain-text";
+import { createUpdateLoad } from "@/domain/load/update";
 import { db } from "@/db/client";
 import { createLoadRepository } from "@/db/repositories/loads";
 import { createPartyRepository } from "@/db/repositories/parties";
@@ -31,6 +32,12 @@ export const runIntake = createIntakePipeline({
 });
 
 export const confirmDraft = createConfirmDraft({
+  loads: loadRepository,
+  parties: partyRepository,
+  carriers: carrierRepository,
+});
+
+export const updateLoad = createUpdateLoad({
   loads: loadRepository,
   parties: partyRepository,
   carriers: carrierRepository,
