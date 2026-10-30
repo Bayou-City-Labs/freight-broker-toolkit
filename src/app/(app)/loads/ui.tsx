@@ -160,16 +160,30 @@ export function EditNote({ edits }: { edits: readonly LoadEdit[] }) {
 }
 
 /**
- * The instant an edit was made, in the reader's own zone — unlike a dock
- * window, which is wall time the document stated and no zone of ours.
+ * The instant an edit was made, in one stated zone and labelled with it.
  *
- * `timeZone` exists so a test can pin the output; production passes nothing,
- * which is the whole point of rendering an instant.
+ * Not the reader's zone, and deliberately not left to the host's: this block
+ * renders inside an async server component, so an unspecified `timeZone` is
+ * whatever the machine is set to — UTC on Vercel. A Houston broker who saved a
+ * load at 21:25 would read `Oct 30, 2026, 02:25`, the next day, with nothing
+ * on screen to say why. On an audit trail a timestamp that cannot be pinned to
+ * a zone is worse than no timestamp.
+ *
+ * Central Time, with `CT` on the string, for the same two reasons
+ * `formatCheckedAt` on the carrier screen picks it: the business is Houston,
+ * and a fixed zone makes the server and client renders identical so the first
+ * paint cannot disagree with itself. Phase 2 reads it from the brokerage.
+ *
+ * The asymmetry with `formatWindow` directly above is deliberate, not an
+ * oversight. A dock window is wall-clock text the document stated and never
+ * said where, so naming a zone for it would invent a fact; an edit instant is
+ * a real instant this system recorded itself, so naming its zone states one.
+ * Converting what we do not know is a guess — labelling what we do know is not.
  */
-export function formatEditedAt(at: string, timeZone?: string): string {
+export function formatEditedAt(at: string): string {
   const parsed = new Date(at);
   if (Number.isNaN(parsed.getTime())) return at;
-  return parsed.toLocaleString("en-US", {
+  return `${parsed.toLocaleString("en-US", {
     // The year is not decoration on an audit trail: without it an edit made
     // last January is indistinguishable from one made this morning.
     year: "numeric",
@@ -182,9 +196,17 @@ export function formatEditedAt(at: string, timeZone?: string): string {
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: "h23",
-    timeZone,
-  });
+    timeZone: EDIT_TRAIL_ZONE,
+  })} ${EDIT_TRAIL_ZONE_LABEL}`;
 }
+
+/**
+ * The zone edit timestamps are stated in. Matches `DISPLAY_ZONE` on the
+ * carrier screen; both become a per-brokerage setting in Phase 2, which is why
+ * the label is kept beside the zone rather than typed into the format string.
+ */
+const EDIT_TRAIL_ZONE = "America/Chicago";
+const EDIT_TRAIL_ZONE_LABEL = "CT";
 
 /**
  * A stored change path, in the words the form uses.

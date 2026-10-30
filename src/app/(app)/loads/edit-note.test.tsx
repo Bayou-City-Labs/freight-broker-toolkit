@@ -23,16 +23,39 @@ const EDIT: LoadEdit = {
 
 describe("formatEditedAt", () => {
   it("carries the year, so a previous year's edit cannot read as today's", () => {
-    expect(formatEditedAt(EDIT.at, "America/Chicago")).toContain("2026");
+    expect(formatEditedAt(EDIT.at)).toContain("2026");
   });
 
   it("states the time the way the dock windows on the same page do", () => {
     // 24-hour, matching `formatWindow`. The windows cannot move to 12-hour
     // without reformatting the wall-clock strings the document stated, so the
     // timestamp is the half that gives way.
-    const rendered = formatEditedAt(EDIT.at, "America/Chicago");
-    expect(rendered).toBe("Oct 29, 2026, 21:25");
+    //
+    // Called the way the page calls it — no zone argument — because that is
+    // the only configuration production has. An earlier version of this test
+    // passed `America/Chicago`, which the page never passed, so it pinned the
+    // formatting and missed the zone entirely: on Vercel the same instant
+    // rendered as the next day in UTC and the suite stayed green.
+    const rendered = formatEditedAt(EDIT.at);
+    expect(rendered).toBe("Oct 29, 2026, 21:25 CT");
     expect(rendered).not.toMatch(/[AP]M/);
+  });
+
+  it("renders the same string whatever zone the host is set to", () => {
+    // The trail is written by a server component, so the host's zone is
+    // whatever the deploy happens to be — UTC on Vercel, Central on this
+    // laptop. A trail entry that reads differently depending on which machine
+    // rendered it is not an audit trail.
+    const original = process.env.TZ;
+    try {
+      process.env.TZ = "UTC";
+      const utcHost = formatEditedAt(EDIT.at);
+      process.env.TZ = "Asia/Tokyo";
+      expect(formatEditedAt(EDIT.at)).toBe(utcHost);
+      expect(utcHost).toBe("Oct 29, 2026, 21:25 CT");
+    } finally {
+      process.env.TZ = original;
+    }
   });
 
   it("falls back to the stored string rather than rendering Invalid Date", () => {
