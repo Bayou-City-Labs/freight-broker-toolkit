@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useId, useState } from "react";
+import { useActionState, useState } from "react";
 import {
   CONFIDENT_ENOUGH,
   flaggedFields,
@@ -12,6 +12,7 @@ import {
 } from "@/domain/intake/load-draft";
 import { Money } from "@/domain/money";
 import { confirmDraftAction } from "./actions";
+import { Field as FieldInput } from "./field";
 import { initialConfirmState, type ExtractState } from "./form-state";
 import styles from "../../ui.module.css";
 
@@ -387,10 +388,7 @@ function dollars(cents: unknown): string {
 }
 
 /**
- * One editable field, carrying what the parser thought of it.
- *
- * The confidence is shown as words, not a number: "0.55" means nothing to a
- * dispatcher, and showing it would imply a precision the scale does not have.
+ * The review screen's field: the shared input, plus the parser's opinion of it.
  */
 function Field({
   name,
@@ -411,39 +409,25 @@ function Field({
   hint?: string;
   format?: (value: unknown) => string;
 }) {
-  const id = useId();
   const value = field?.value ?? null;
-  const defaultValue = value === null ? "" : format ? format(value) : String(value);
 
   return (
-    <div className={`${styles.field} ${flagged ? styles.fieldFlagged : ""}`}>
-      <label className={styles.label} htmlFor={id}>
-        {label}
-        {required && <span aria-hidden="true"> *</span>}
-      </label>
-      <input
-        id={id}
-        name={name}
-        type={type}
-        className={styles.input}
-        defaultValue={defaultValue}
-        required={required}
-        autoComplete="off"
-      />
-      {flagged && (
-        <span className={styles.fieldFlag}>
-          {value === null
+    <FieldInput
+      name={name}
+      label={label}
+      defaultValue={value === null ? "" : format ? format(value) : String(value)}
+      type={type}
+      required={required}
+      hint={hint}
+      flag={
+        flagged
+          ? value === null
             ? "Not found — enter it"
-            : `Low confidence (${describeConfidence(field?.confidence ?? 0)}) — check it`}
-        </span>
-      )}
-      {field?.sourceText && (
-        <span className={styles.sourceText} title={field.sourceText}>
-          read from “{truncate(field.sourceText)}”
-        </span>
-      )}
-      {hint && !flagged && <span className={styles.hint}>{hint}</span>}
-    </div>
+            : `Low confidence (${describeConfidence(field?.confidence ?? 0)}) — check it`
+          : undefined
+      }
+      sourceText={field?.sourceText}
+    />
   );
 }
 
@@ -451,8 +435,4 @@ function describeConfidence(confidence: number): string {
   if (confidence >= CONFIDENT_ENOUGH) return "high";
   if (confidence >= 0.65) return "medium";
   return "low";
-}
-
-function truncate(text: string, limit = 60): string {
-  return text.length <= limit ? text : `${text.slice(0, limit - 1)}…`;
 }
