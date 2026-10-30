@@ -427,6 +427,23 @@ function carrierLinkName(id: string | null, carrier: Carrier | null): string {
   return carrier?.legalName ?? id;
 }
 
+/**
+ * A whole stop on one line, for a position the positional diff cannot reach.
+ *
+ * Kind and facility always; the date and window only when the stop has them.
+ * Padding the line with a dash for an unstated window would read as a fact
+ * about the dock rather than an absence of one.
+ */
+function statedStop(stop: StopValues): string {
+  const kind = stop.kind === "pickup" ? "Pickup" : "Delivery";
+  const window =
+    stop.windowStart && stop.windowEnd
+      ? `${stop.windowStart}–${stop.windowEnd}`
+      : (stop.windowStart ?? stop.windowEnd ?? null);
+  const when = [stop.date, window].filter((part) => part !== null).join(" ");
+  return when ? `${kind} — ${stop.partyName}, ${when}` : `${kind} — ${stop.partyName}`;
+}
+
 function diff(before: StatedView, after: EditedLoad, link: CarrierLink): LoadEditChange[] {
   const changes: LoadEditChange[] = [];
 
@@ -463,6 +480,27 @@ function diff(before: StatedView, after: EditedLoad, link: CarrierLink): LoadEdi
   // moved from second to first reads as two changed stops, which is what a
   // person looking at the trail would want to see.
   const shared = Math.min(before.stops.length, after.stops.length);
+
+  // Positions past the shorter route have nothing to compare against, so a
+  // field-by-field diff cannot see them at all: the count entry above was
+  // once the whole record of a stop being added or dropped. For a route
+  // change on a booked load, *which* stop moved is the thing most worth
+  // having written down.
+  for (let index = shared; index < after.stops.length; index += 1) {
+    changes.push({
+      path: `stops.${index}`,
+      from: "not on the route",
+      to: statedStop(after.stops[index]),
+    });
+  }
+  for (let index = shared; index < before.stops.length; index += 1) {
+    changes.push({
+      path: `stops.${index}`,
+      from: statedStop(before.stops[index]),
+      to: "taken off the route",
+    });
+  }
+
   for (let index = 0; index < shared; index += 1) {
     for (const key of STOP_PATHS) {
       // A date with no time is not currently storable: a stop's date lives

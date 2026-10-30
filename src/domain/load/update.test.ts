@@ -372,6 +372,13 @@ describe("updateLoad", () => {
     expect(outcome.stops.map((stop) => stop.sequence)).toEqual([0, 1, 2]);
     expect(outcome.load.details.edits?.[0].changes).toEqual([
       { path: "stops", from: "2 stops", to: "3 stops" },
+      // The count is the quickest read; the line beneath it answers "when did
+      // El Paso get on this load".
+      {
+        path: "stops.2",
+        from: "not on the route",
+        to: "Delivery — EL PASO CROSSDOCK, 2026-11-04 10:00",
+      },
     ]);
   });
 
@@ -388,6 +395,62 @@ describe("updateLoad", () => {
     expect(outcome.stops).toHaveLength(1);
     expect(outcome.stops[0].id).toBe(saved.stops[1].id);
     expect(outcome.stops[0].sequence).toBe(0);
+  });
+
+  it("names the stop that was removed, not just the new count", async () => {
+    const { update, saved, unchanged } = await given();
+    const edit = unchanged();
+
+    // Dropping the delivery leaves the pickup in place, so the only thing the
+    // positional diff sees is a route one shorter.
+    const outcome = await update(scope, saved.load.id, {
+      ...edit,
+      stops: [edit.stops[0]],
+    });
+    if (outcome.status !== "saved") throw new Error("expected a save");
+
+    expect(outcome.load.details.edits?.[0].changes).toEqual([
+      { path: "stops", from: "2 stops", to: "1 stop" },
+      {
+        path: "stops.1",
+        from: "Delivery — LONE STAR FOODS, 2026-11-03 14:00",
+        to: "taken off the route",
+      },
+    ]);
+  });
+
+  it("states an added stop with no date or window by what it does have", async () => {
+    const { update, saved, unchanged } = await given();
+    const edit = unchanged();
+
+    const outcome = await update(scope, saved.load.id, {
+      ...edit,
+      stops: [
+        ...edit.stops,
+        {
+          id: null,
+          kind: "pickup",
+          partyName: "EL PASO CROSSDOCK",
+          addressLine: null,
+          city: null,
+          state: null,
+          postalCode: null,
+          date: null,
+          windowStart: null,
+          windowEnd: null,
+          referenceNumber: null,
+          windowRawText: null,
+        },
+      ],
+    });
+    if (outcome.status !== "saved") throw new Error("expected a save");
+
+    // No invented "—": an unstated window is simply not mentioned.
+    expect(outcome.load.details.edits?.[0].changes?.[1]).toEqual({
+      path: "stops.2",
+      from: "not on the route",
+      to: "Pickup — EL PASO CROSSDOCK",
+    });
   });
 
   it("reorders stops, keeping their ids", async () => {
