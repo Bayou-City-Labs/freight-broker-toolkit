@@ -119,17 +119,26 @@ export function createUpdateLoad({
 
     const existingById = new Map(current.stops.map((stop) => [stop.id, stop]));
     const writes: StopWrite[] = [];
+    const resolved: Party[] = [];
 
     for (const [index, stop] of edited.stops.entries()) {
       const existing = stop.id ? (existingById.get(stop.id) ?? null) : null;
       const party = await resolveParty(scope, parties, stop, existing);
+      resolved.push(party);
       writes.push({
         ...toNewStop(stated(stop, existing), index, party, carriedDetails(existing)),
         ...(existing ? { id: existing.id } : {}),
       });
     }
 
-    const changes = diff(before, edited, {
+    // One save can resolve the same facility more than once — two stops at one
+    // dock, or a rename pointing this stop at the dock the next one uses. The
+    // last write is what the row holds when the save finishes, so that is what
+    // every stop pointing at it has to report.
+    const latest = new Map(resolved.map((party) => [party.id, party]));
+    const facilities = resolved.map((party) => latest.get(party.id) ?? party);
+
+    const changes = diff(before, edited, facilities, {
       before: linkedBefore,
       after: carrier,
     });
@@ -446,9 +455,37 @@ function statedStop(stop: StopValues): string {
   return when ? `${kind} — ${stop.partyName}, ${when}` : `${kind} — ${stop.partyName}`;
 }
 
+/**
+ * A submitted stop as it will read back off the row it is about to be written
+ * to.
+ *
+ * The facility fields are taken from the `Party` the stop resolved to, not from
+ * the submission, because `resolveParty` — not the form — decides what gets
+ * stored: a case-only rename changes nothing, a blank address line clears
+ * nothing, and naming a dock we already hold adopts that dock's address. The
+ * `before` side is read from the party row too (`statedView`), so both sides of
+ * the diff state the facility as stored and the trail describes the write
+ * rather than the typing. Reporting the submission is how the trail came to
+ * claim an erasure that never happened.
+ *
+ * Everything else is the submission, which is written to the stop row verbatim.
+ */
+function storedStop(stop: EditedStop, facility: Party): StopValues {
+  return {
+    ...stop,
+    partyName: facility.name,
+    addressLine: facility.addressLine1,
+    city: facility.city,
+    state: facility.region,
+    postalCode: facility.postalCode,
+  };
+}
+
 function diff(
   before: StatedView,
   after: EditedLoad,
+  /** The facility each submitted stop resolved to, in `after.stops` order. */
+  facilities: readonly Party[],
   link: CarrierLink,
 ): LoadEditChange[] {
   const changes: LoadEditChange[] = [];
@@ -502,15 +539,21 @@ function diff(
   const storedIds = new Set(before.stops.map((stop) => stop.id));
   const isAdded = (stop: EditedStop) => stop.id === null || !storedIds.has(stop.id);
 
+  const submitted = after.stops.map((stop, index) => ({
+    index,
+    added: isAdded(stop),
+    stored: storedStop(stop, facilities[index]),
+  }));
+
   // Added stops are reported at the position they now occupy, removed ones at
   // the position they used to — each describing the route the reader is
   // looking at either side of the save.
-  for (const [index, stop] of after.stops.entries()) {
-    if (!isAdded(stop)) continue;
+  for (const entry of submitted) {
+    if (!entry.added) continue;
     changes.push({
-      path: `stops.${index}`,
+      path: `stops.${entry.index}`,
       from: "not on the route",
-      to: statedStop(stop),
+      to: statedStop(entry.stored),
     });
   }
   for (const [index, stop] of before.stops.entries()) {
@@ -532,9 +575,7 @@ function diff(
   // A path names the stop's position in the saved route, which is the route
   // the screen reading this trail displays.
   const kept = before.stops.filter((stop) => submittedIds.has(stop.id));
-  const survived = after.stops
-    .map((stop, index) => ({ stop, index }))
-    .filter((entry) => !isAdded(entry.stop));
+  const survived = submitted.filter((entry) => !entry.added);
   // Equal lengths unless a submission states one stored id twice, which the
   // write path tolerates by giving the second row the id and the diff by
   // leaving the extra out.
@@ -543,7 +584,7 @@ function diff(
   for (let position = 0; position < shared; position += 1) {
     const index = survived[position].index;
     const fromStop = kept[position];
-    const toStop = survived[position].stop;
+    const toStop = survived[position].stored;
     for (const key of STOP_PATHS) {
       // A date with no time is not currently storable: a stop's date lives
       // only inside `opensAtLocal`/`closesAtLocal`, and `toNewStop` writes

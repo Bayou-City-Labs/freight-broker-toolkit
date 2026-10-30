@@ -372,6 +372,105 @@ describe("updateLoad", () => {
     expect(parties.rows).toHaveLength(2);
   });
 
+  it("says nothing when a facility's name is retyped in a different case", async () => {
+    const { update, parties, saved, unchanged } = await given();
+    const edit = unchanged();
+
+    // Facility identity is case-blind in `resolveParty` and in `findByName`, so
+    // this save points at the same dock and renames nothing. A trail entry here
+    // would report a write that did not happen, on this save and on every one
+    // after it — the form prefills the stored name, so a user who likes
+    // lowercase produces one every time.
+    const outcome = await update(scope, saved.load.id, {
+      ...edit,
+      stops: [{ ...edit.stops[0], partyName: "acme distribution" }, edit.stops[1]],
+    });
+    if (outcome.status !== "saved") throw new Error("expected a save");
+
+    expect(outcome.load.details.edits).toBeUndefined();
+    // Nothing moved: same facility, same casing, no second row.
+    expect(parties.rows.map((party) => party.name).sort()).toEqual([
+      "ACME DISTRIBUTION",
+      "LONE STAR FOODS",
+    ]);
+    expect(outcome.stops[0].partyId).toBe(
+      parties.rows.find((party) => party.name === "ACME DISTRIBUTION")?.id,
+    );
+  });
+
+  it("reports the address a stop moved to, not the boxes that were cleared", async () => {
+    const { update, parties, saved, unchanged } = await given();
+    const edit = unchanged();
+
+    // Pointing a stop at a dock we already hold and clearing the stale address
+    // boxes while you are there: `statedAddress` ignores the blanks, so the
+    // facility keeps its own address and the stop adopts it. The trail used to
+    // read `address: 4400 Navigation Blvd → —` for a stop whose address is
+    // plainly on the screen above it.
+    const outcome = await update(scope, saved.load.id, {
+      ...edit,
+      stops: [
+        {
+          ...edit.stops[0],
+          partyName: "LONE STAR FOODS",
+          addressLine: null,
+          city: null,
+          state: null,
+          postalCode: null,
+        },
+      ],
+    });
+    if (outcome.status !== "saved") throw new Error("expected a save");
+
+    const loneStar = parties.rows.find((party) => party.name === "LONE STAR FOODS");
+    expect(loneStar?.addressLine1).toBe("900 Industrial Way");
+    expect(outcome.load.details.edits?.[0].changes).toEqual([
+      { path: "stops", from: "2 stops", to: "1 stop" },
+      {
+        path: "stops.1",
+        from: "Delivery — LONE STAR FOODS, 2026-11-03 14:00",
+        to: "taken off the route",
+      },
+      { path: "stops.0.partyName", from: "ACME DISTRIBUTION", to: "LONE STAR FOODS" },
+      {
+        path: "stops.0.addressLine",
+        from: "4400 Navigation Blvd",
+        to: "900 Industrial Way",
+      },
+      { path: "stops.0.city", from: "Houston", to: "Dallas" },
+      { path: "stops.0.postalCode", from: "77011", to: "75201" },
+    ]);
+  });
+
+  it("links a carrier by USDOT number when no MC number was stated", async () => {
+    const carriers = fakeCarriers([
+      {
+        id: "carrier-known",
+        brokerageId: scope.brokerageId,
+        dotNumber: "1234567",
+        mcNumber: "987654",
+        legalName: "GULF COAST HAULING LLC",
+        dbaName: null,
+        details: {},
+      },
+    ]);
+    const { update, saved, unchanged } = await given(carriers);
+
+    // A rate con stating only a USDOT number is ordinary, and `findCarrier`'s
+    // second branch is the one a copy-paste would wire to `findByMcNumber`.
+    const outcome = await update(scope, saved.load.id, {
+      ...unchanged(),
+      carrierMcNumber: null,
+      carrierDotNumber: "1234567",
+    });
+    if (outcome.status !== "saved") throw new Error("expected a save");
+
+    expect(outcome.load.carrierId).toBe("carrier-known");
+    expect(outcome.carrierLinked).toBe(true);
+    // The link did not move, so there is nothing to report.
+    expect(outcome.load.details.edits).toBeUndefined();
+  });
+
   it("adds a stop", async () => {
     const { update, saved, unchanged } = await given();
     const edit = unchanged();
