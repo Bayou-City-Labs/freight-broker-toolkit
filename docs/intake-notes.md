@@ -1,0 +1,63 @@
+# Load intake: build order, constraints, lessons, how it works
+
+Load intake: build order, and what a document corpus actually calibrates
+Build order — steps 1–4 are built (see "Current state"):
+
+Text stage — digital PDFs with positions. Built. Also a plain-text stage, because a pasted email is the commonest intake there is.
+The review screen. Built, including the save into a real Load + Stop[] + Party.
+Structure stage — the generic label-proximity parser is built. Per-layout templates are not, and are the next decision, not the next task: build them where they measurably beat the generic parser on real documents.
+A corpus inspector. Built as a CLI: npm run intake:inspect -- <file...>.
+Real documents are not a build gate. An earlier version of this file said not to build the structure stage before having a corpus. That was wrong, and it conflated two separate things: whether the template engine can be built, and whether templating will be a good strategy. The engine — anchor labels, positions, regex, fingerprint selection — is identical whether a template corresponds to McLeod or to Acme Foods. It does not care what the cluster means. Build it against synthetic fixtures.
+
+What a corpus calibrates, none of which blocks the above:
+
+Template authoring ergonomics — the real fork. Five templates ever means hand-written objects forever. Fifty, with clients adding their own unaided, means a template editor, probably a teach-by-example flow over a rendered PDF. A different order of build, and a decision to make after the engine exists.
+How good the Ollama fallback must be — rare path or main path.
+Confidence calibration — what a 0.6 from a template match should mean next to a 0.6 from an LLM, on one review screen.
+The trap in synthetic-only fixtures. Author a dummy rate con, then write a template for it, and the template matches perfectly — because the same person wrote both sides. That validates the engine and proves nothing about the premise. Worse, the engine quietly gets shaped around whatever the generator emits: clean Label: value pairs produce an anchor matcher that assumes them, which then meets a real rate con whose pickup window sits in an unruled table, whose weight is a rotated stamp, and three of whose fields are one merged text run. Keep a handful of real documents to design against, even before there is coverage.
+
+The business signal, which is separate from the code. Whether layouts cluster by TMS vendor or by shipper predicts whether Phase 2 self-serve is reachable: a "McLeod rate con" template is reusable across every future client, where a per-shipper template is bespoke work on every onboarding. Worth knowing early for roadmap and pricing. It changes investment sizing, not the build.
+
+Known constraints on the intake pipeline
+Flagged before building, because each one changes the shape of the code:
+
+OCR does not fit in a request handler. tesseract.js is WASM: cold start, language-data load, then seconds per page, and memory-hungry. A multi-page scanned rate con will exceed the function timeout on Vercel. That path needs a job queue and a status-polling UI — a materially bigger build than the digital-PDF path, and the reason the two stages are listed separately rather than as one step.
+unpdf's convenience API does not return positions. Wrong — corrected against the library. unpdf@2 exports extractTextItems, which returns str, x, y, width, height, fontSize and hasEOL per item. Two things that are true and useful: its x/y use PDF coordinates (origin bottom-left), so y is flipped to a top-left origin at the adapter boundary; and page dimensions are not included, so the adapter opens a getDocumentProxy once and reads getViewport() per page.
+inspectPages is how you detect a scan. It returns textLength, invisibleTextLength, imageCount and imageCoverage per page. A page with no text and an image covering it needs OCR — a far better signal than catching an empty extraction downstream. It resolves to { totalPages, pages }, not an array; pages is the part you want. Wired in as TextPage.imageCoverage, and pageNeedsOcr uses it for the case that actually bites: a faxed page is one full-page image with a transmission footer stamped on it, so it has text and a test for emptiness waves it through to a parser that then finds nothing.
+Text arrives as fragments, not lines. unpdf emits "ACME", " ", "LOGISTICS" as separate items. Assembling lines by y-proximity is the adapter's job, and it is the part worth unit-testing, since every downstream parser depends on it.
+The existing Extractor port does not fit. Reshaped into TextExtractor + StructureParser in src/domain/ports/intake.ts; the old Extractor is gone.
+sharp is a heavy native dependency. Only pull it in when the OCR path is actually built.
+Lessons from building it, which cost real time
+Geometry must not be smuggled through the text. toLines normalizes a column gap to a single space by design — positions stay on the items. A first cut of the label parser then tried to split "Load #: 884213 Date: 10/28/2026" with a \s{2,} rule, which could never fire, so the load number silently swallowed the date on the one fixture that existed. The fix is toColumns(line), which re-derives column breaks from item x-gaps. If a rule needs to know where a value ends, read the items, not the string.
+Right-aligned values are as common as inline ones. "Total Rate: $2,450.00" puts the value in the next column, so a parser that only reads the rest of the label's own column misses every total. Both layouts have to work: own column first, then later columns on the same row, then the line beneath.
+Section headings and party labels are different strengths. PICKUP announces a section; Shipper: names the company inside one. Treating both as section starts reads the standard two-stop layout as four stops. Headings win; party labels are promoted only for documents that have no headings at all, which is what a pasted tender looks like.
+A "use server" file may export only async functions. Exporting initialVetFormState from an actions module throws A "use server" file can only export async functions, found object at module evaluation and takes down whatever rendered it. It typechecks, it builds, and it only fails at runtime — the carrier module shipped with this and nothing caught it. Form state lives in a sibling form-state.ts.
+Compile-time green says nothing about render-time. That bug was found by driving the real app, not by tsc or next build. Hence review-form.test.tsx: renderToStaticMarkup over the real components, which catches a render-time throw and pins the name attributes the server action depends on. Rendering a client component in Vitest needs vi.mock on the action module — importing it for real drags in Auth.js and next/server, which do not resolve outside Next's bundler.
+
+Current state (carrier vetting and load intake built)
+Verified: npm test (447 tests), npm run lint, npm run typecheck, npm run format:check, and npm run build all pass — and the intake and edit flows have both been driven in a browser end to end, which is a different question (see below).
+
+Load intake is implemented end to end. Paste a rate confirmation or upload a digital PDF at /loads/new, get a draft with per-field confidence and the uncertain fields flagged where they sit, edit it, and save a real Load + ordered Stop[] + resolved Party rows. /loads lists them; /loads/[id] shows the route, the window as the document stated it, and how the load was read.
+
+The flow: DocumentInput → TextExtractor (PdfTextExtractor or the plain-text stage) → DocumentText with positions → StructureParser (label-proximity-v1) → LoadDraft with confidences → a human → ConfirmedLoad → confirmDraft → persisted Load/Stop/Party. createIntakePipeline and createConfirmDraft depend only on ports, so both are tested against fakes; intake-flow.test.ts drives the real adapters from the fixture PDF into real Postgres, because the failure this project actually hits is a layer written and never wired.
+
+Four things about it worth knowing without reading the code:
+
+A draft is never persisted. It round-trips through the browser in a hidden field and is re-validated on the way back. A draft nobody confirms has no value, re-extraction is cheap and deterministic, and a load_drafts table would be a schema commitment made to serve a screen.
+
+Intake never creates a carrier. A carrier record is the subject of a vetting history; one conjured from a name on a PDF would sit in the list looking checked. The name is kept in details.carrierAsWritten, the load links only to a carrier already held, and both the review screen and the load page say so out loud — with a one-click link to vet them.
+
+The corrections a reviewer makes are recorded in details.intake, with the confidence the parser had claimed. That is the only moment the module can learn whether a confidence meant anything, and it cannot be reconstructed afterwards. It is the evidence the scale eventually gets tuned from.
+
+A name/number disagreement is reported, loudly. The link is made on MC or DOT number, because that is what a document states precisely. When the number resolves to a carrier whose name is not the one the document used, the load page says so instead of quietly displaying the held carrier's name — that disagreement is the signature of double brokering or carrier identity theft, which the FMCSA data explicitly cannot detect but this can, for free, because both halves are in hand. carrierNameMatches normalizes corporate form and punctuation so "Gulf Coast Hauling, L.L.C." does not trip it; a warning that cries wolf stops being read.
+
+A saved load can be edited, and says what changed. /loads/[id]/edit rewrites the load, its route, and the facilities behind its stops. Each save appends {at, changes} to details.edits, which the load page renders — a rate con is an agreement, so "did the carrier pay always say $1,850?" is a question that gets asked. The trail is a sibling of details.intake, never part of it: intake.corrections is evidence about the parser, and diluting it with edits made days later would corrupt the only data the confidence scale can be calibrated from. Correcting a stop's address fixes the shared Party, so it is right on every load that touches that dock; retyping the name points the stop at a different facility instead, and never renames one other loads depend on.
+
+The whole flow has been driven in a browser end to end — paste, review, correct a field, save, and the duplicate-reference path — and that is how both the "use server" bug and the name-mismatch gap were found. Neither was visible to 359 passing tests, tsc, or next build. The name-mismatch gap in particular is the one worth remembering: no test would have been written for it, because nobody had had the thought yet. It took a real screen showing a wrong-looking name. Run the thing before calling a screen done.
+
+The edit screen proved the same lesson twice over. Driving it found a bug 426 passing tests, three task reviews and a clean build had all missed: clearing both carrier-number boxes set carrier_id to NULL and the trail recorded nothing — and if the unlink was the only change in that save, no entry was written at all. The vetting link is the difference between "this carrier's authority and insurance were checked" and "nobody checked", and it could move in either direction leaving no record.
+
+It survived review because of a specific trap worth naming: StatedView carried carrierId and its own doc comment said a changed linkage "is reported as carrierId" — but carrierId was never in LOAD_PATHS, the list the diff actually iterates. The comment described behaviour the code did not have, and a reviewer cited that comment as evidence the case was handled. A comment asserting a property is not evidence the property holds; the same pattern then turned up twice more on the same branch — a timestamp comment claiming "the reader's own zone" from a server component that rendered UTC, and a test named for host-zone independence whose mechanism the code never read. On an audit trail it matters more than elsewhere: a trail that lies is worse than no trail, because it gets believed.
+
+docs/load-intake.md is the walkthrough: annotated screenshots of every screen a load passes through — read, review, save, and correct afterwards — paste-ready sample documents to reproduce each one, and what the module cannot do yet. Read it before changing an intake or edit screen — it is also the fastest way to hand the module to someone else. (The same screenshots are in the agent wiki's project note; the repo copy is canonical.)
+
